@@ -1,0 +1,109 @@
+import type { AbpPreset, AbpType, Params } from "./types";
+
+export const PHASE_TO_K = [
+  0,
+  3,
+  null,
+  null,
+  1,
+  4,
+  null,
+  null,
+  2,
+  5,
+  null,
+  null,
+] as const;
+
+export const PHASE_LEN = 12;
+
+export const HEX_DIRS = [
+  [1, 0],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [0, -1],
+  [1, -1],
+] as const;
+
+export const FACE_COLORS = [
+  "#f87171",
+  "#f59e0b",
+  "#facc15",
+  "#34d399",
+  "#60a5fa",
+  "#c084fc",
+] as const;
+
+export const ABP_PRESETS: Record<Exclude<AbpType, "custom">, AbpPreset> = {
+  fascin: {
+    model: "single",
+    length: 11.0,
+    latticeA: 11.0,
+    kCl: 200,
+    kPerp: 80,
+    usePerp: true,
+    label: "fascin",
+  },
+  actinin: {
+    model: "linker4",
+    length: 36.0,
+    latticeA: 36.0,
+    kCl: 8,
+    kPerp: 0,
+    usePerp: false,
+    kInternal: 200,
+    kBendInternal: 25,
+    label: "α-actinin",
+  },
+  camkii: {
+    model: "linker2",
+    length: 22.0,
+    latticeA: 22.0,
+    kCl: 30,
+    kPerp: 0,
+    usePerp: false,
+    kInternal: 200,
+    kBendInternal: 40,
+    label: "CaMKII",
+  },
+};
+
+export const KBT_PN_NM = 4.114;
+export const ACTIN_LP_NM = 10000;
+export const ACTIN_KAPPA = ACTIN_LP_NM * KBT_PN_NM;
+
+export function actinKtheta(b: number): number {
+  return ACTIN_KAPPA / b;
+}
+
+export function defaultParams(): Params {
+  const b = 2.75;
+  const a = 11.0;
+  return {
+    rings: 2,
+    monomers: 96,
+    b,
+    a,
+    kb: 2000,
+    clDist: 11.0,
+    ktheta: Math.round(actinKtheta(b)),
+    kcl: 200,
+    kperp: 80,
+    rep: 20,
+    temp: 0,
+    dt: 0.002,
+    steps: 6,
+    sat: 1,
+    def: 0,
+    mcT0: 8,
+    mcT1: 0.05,
+    mcIters: 4000,
+    mcSkew: 0.15,
+    sigma: Math.max(2.0, a * 0.55),
+    drag: 0.96,
+    registryMode: "perfect",
+    abpType: "fascin",
+    perturbMode: "none",
+  };
+}

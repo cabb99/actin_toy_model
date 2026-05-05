@@ -1,0 +1,277 @@
+import { HEX_DIRS, PHASE_LEN } from "../model/constants";
+import { currentAbpEffective } from "../model/abp";
+import { axialToXY, defaultRegistry, exposedK } from "../model/hex";
+import type { BeadMeta, Params, Rng, SimulationState } from "../model/types";
+import { randomRegistry } from "./random";
+
+export function beadIndex(params: Pick<Params, "monomers">, filamentId: number, m: number): number {
+  return filamentId * params.monomers + m;
+}
+
+export function buildFilaments(state: SimulationState, params: Params, rng: Rng): void {
+  state.filaments = [];
+  const byKey = new Map<string, number>();
+  const R = params.rings;
+  let id = 0;
+
+  for (let q = -R; q <= R; q++) {
+    for (let r = -R; r <= R; r++) {
+      const s = -q - r;
+      if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) <= R) {
+        const xy = axialToXY(q, r, params.a);
+        state.filaments.push({ id, q, r, x: xy.x, y: xy.y, s: 0 });
+        byKey.set(`${q},${r}`, id);
+        id++;
+      }
+    }
+  }
+
+  state.neighborPairs = [];
+  for (const f of state.filaments) {
+    for (let k = 0; k < 3; k++) {
+      const [dq, dr] = HEX_DIRS[k];
+      const j = byKey.get(`${f.q + dq},${f.r + dr}`);
+      if (j !== undefined) state.neighborPairs.push([f.id, j, k]);
+    }
+  }
+
+  assignRegistries(state, params, rng);
+}
+
+export function assignRegistries(state: SimulationState, params: Params, rng: Rng): void {
+  for (const f of state.filaments) {
+    switch (params.registryMode) {
+      case "zero":
+        f.s = 0;
+        break;
+      case "random":
+        f.s = randomRegistry(rng);
+        break;
+      case "custom":
+        break;
+      case "perfect":
+      default:
+        f.s = defaultRegistry(f.q, f.r, 0);
+    }
+  }
+}
+
+export function compatibleAt(
+  state: SimulationState,
+  _params: Params,
+  fi: number,
+  fj: number,
+  k: number,
+  m: number,
+): boolean {
+  const si = state.filaments[fi]?.s ?? 0;
+  const sj = state.filaments[fj]?.s ?? 0;
+  const oppK = (k + 3) % 6;
+  return exposedK(m, si) === k && exposedK(m, sj) === oppK;
+}
+
+export function syncBeadsToTyped(state: SimulationState): void {
+  const N = state.beads.length;
+  const pos = new Float32Array(N * 3);
+  const vel = new Float32Array(N * 3);
+  const frc = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const p = state.beads[i];
+    pos[i * 3] = p.x;
+    pos[i * 3 + 1] = p.y;
+    pos[i * 3 + 2] = p.z;
+  }
+  state.pos = pos;
+  state.vel = vel;
+  state.frc = frc;
+}
+
+export function syncTypedToBeads(state: SimulationState): void {
+  const pos = state.pos;
+  for (let i = 0; i < state.beads.length; i++) {
+    const p = state.beads[i];
+    p.x = pos[i * 3];
+    p.y = pos[i * 3 + 1];
+    p.z = pos[i * 3 + 2];
+  }
+}
+
+export function addInternalBead(state: SimulationState, x: number, y: number, z: number): number {
+  const idx = state.beads.length;
+  state.beads.push({
+    x,
+    y,
+    z,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    fx: 0,
+    fy: 0,
+    fz: 0,
+    f: -1,
+    m: -1,
+    x0: x,
+    y0: y,
+    z0: z,
+    pinned: false,
+    isInternal: true,
+  });
+  return idx;
+}
+
+export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng): void {
+  state.beads.length = state.nFilamentBeads;
+  state.bonds.length = state.nBackboneBonds;
+  state.bends.length = state.nBackboneBends;
+  state.crosslinks = [];
+  const counts = new Map<string, number>();
+
+  const abp = currentAbpEffective(params);
+  const restLen = abp.length;
+
+  for (const [fi, fj, k] of state.neighborPairs) {
+    let nLinks = 0;
+    for (let m = 0; m < params.monomers; m++) {
+      if (!compatibleAt(state, params, fi, fj, k, m)) continue;
+      if (rng.random() > params.sat) continue;
+
+      const ia = beadIndex(params, fi, m);
+      const ib = beadIndex(params, fj, m);
+
+      if (abp.model === "single") {
+        state.crosslinks.push([ia, ib, restLen]);
+      } else if (abp.model === "linker2") {
+        const a = state.beads[ia];
+        const b = state.beads[ib];
+        const iInt = addInternalBead(
+          state,
+          0.5 * (a.x + b.x),
+          0.5 * (a.y + b.y),
+          0.5 * (a.z + b.z),
+        );
+        const segLen = restLen * 0.5;
+        state.bonds.push([ia, iInt, segLen, abp.kInternal]);
+        state.bonds.push([iInt, ib, segLen, abp.kInternal]);
+        state.bends.push([ia, iInt, ib, abp.kBendInternal]);
+      } else {
+        const a = state.beads[ia];
+        const b = state.beads[ib];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dz = b.z - a.z;
+        const i1 = addInternalBead(state, a.x + dx / 3, a.y + dy / 3, a.z + dz / 3);
+        const i2 = addInternalBead(state, a.x + (2 * dx) / 3, a.y + (2 * dy) / 3, a.z + (2 * dz) / 3);
+        const segLen = restLen / 3;
+        state.bonds.push([ia, i1, segLen, abp.kInternal]);
+        state.bonds.push([i1, i2, segLen, abp.kInternal]);
+        state.bonds.push([i2, ib, segLen, abp.kInternal]);
+        state.bends.push([ia, i1, i2, abp.kBendInternal]);
+        state.bends.push([i1, i2, ib, abp.kBendInternal]);
+      }
+      nLinks++;
+    }
+    counts.set(`${fi}-${fj}`, nLinks);
+  }
+
+  state.pairLinkCount = counts;
+  syncBeadsToTyped(state);
+}
+
+export function resetSystem(
+  state: SimulationState,
+  params: Params,
+  rng: Rng,
+  randomize = false,
+): void {
+  buildFilaments(state, params, rng);
+  state.beads = [];
+  state.bonds = [];
+  state.bends = [];
+
+  const zCenter = 0.5 * (params.monomers - 1) * params.b;
+  const disorder = randomize ? params.a * 0.06 : 0;
+
+  for (const f of state.filaments) {
+    for (let m = 0; m < params.monomers; m++) {
+      const taper = Math.sin(Math.PI * m / Math.max(1, params.monomers - 1));
+      const bead: BeadMeta = {
+        x: f.x + disorder * taper * rng.normal(),
+        y: f.y + disorder * taper * rng.normal(),
+        z: m * params.b - zCenter + disorder * 0.25 * taper * rng.normal(),
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        fx: 0,
+        fy: 0,
+        fz: 0,
+        f: f.id,
+        m,
+        x0: f.x,
+        y0: f.y,
+        z0: m * params.b - zCenter,
+        pinned: false,
+      };
+      state.beads.push(bead);
+    }
+  }
+
+  for (const f of state.filaments) {
+    for (let m = 0; m < params.monomers - 1; m++) {
+      state.bonds.push([beadIndex(params, f.id, m), beadIndex(params, f.id, m + 1), params.b]);
+    }
+    for (let m = 1; m < params.monomers - 1; m++) {
+      state.bends.push([
+        beadIndex(params, f.id, m - 1),
+        beadIndex(params, f.id, m),
+        beadIndex(params, f.id, m + 1),
+      ]);
+    }
+  }
+
+  state.nFilamentBeads = state.beads.length;
+  state.nBackboneBonds = state.bonds.length;
+  state.nBackboneBends = state.bends.length;
+  buildCrosslinks(state, params, rng);
+  applyPerturbationConstraints(state, params);
+
+  state.frame = 0;
+  state.perturb.samples = [];
+  state.grabbedBead = -1;
+}
+
+export function applyPerturbationConstraints(state: SimulationState, params: Params): void {
+  for (const p of state.beads) p.pinned = false;
+  state.bend.centerBeads = [];
+  if (params.perturbMode !== "bend3") return;
+
+  const last = params.monomers - 1;
+  const mMid = Math.floor(last / 2);
+  let cx = 0;
+  let cy = 0;
+  let cz = 0;
+  let n = 0;
+
+  for (const f of state.filaments) {
+    state.beads[beadIndex(params, f.id, 0)].pinned = true;
+    state.beads[beadIndex(params, f.id, last)].pinned = true;
+    const idx = beadIndex(params, f.id, mMid);
+    const p = state.beads[idx];
+    state.bend.centerBeads.push(idx);
+    cx += p.x0;
+    cy += p.y0;
+    cz += p.z0;
+    n++;
+  }
+
+  if (n > 0) {
+    state.bend.com0 = { x: cx / n, y: cy / n, z: cz / n };
+  }
+}
+
+export function compatibleSiteCountPerPeriod(si: number, sj: number, k: number): number {
+  let n = 0;
+  for (let m = 0; m < PHASE_LEN; m++) {
+    if (exposedK(m, si) === k && exposedK(m, sj) === (k + 3) % 6) n++;
+  }
+  return n;
+}

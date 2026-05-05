@@ -1,0 +1,66 @@
+import { expect, test } from "@playwright/test";
+
+test("loads the app and paints the canvas", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Actin bundle toy model" })).toBeVisible();
+  await expect(page.locator("#readout")).toContainText("filaments", { timeout: 10_000 });
+
+  const nonBlank = await page.locator("#canvas").evaluate((canvas) => {
+    const c = canvas as HTMLCanvasElement;
+    const ctx = c.getContext("2d");
+    if (!ctx) return false;
+    const { data } = ctx.getImageData(0, 0, Math.min(80, c.width), Math.min(80, c.height));
+    return Array.from(data).some((value, i) => i % 4 !== 3 && value !== 0);
+  });
+  expect(nonBlank).toBe(true);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("controls update labels and display toggles stay stable", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#rings").evaluate((el) => {
+    const input = el as HTMLInputElement;
+    input.value = "3";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(page.locator("#ringsVal")).toContainText("3 (37 filaments)");
+
+  await page.locator("#faceToggle").click();
+  await expect(page.locator("#faceToggle")).toHaveClass(/on/);
+  await expect(page.locator("#legend")).toContainText("Exposed face");
+});
+
+test("monte carlo switches registry mode to custom", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#mcIters").evaluate((el) => {
+    const input = el as HTMLInputElement;
+    input.value = "500";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#mcBtn").click();
+  await expect(page.locator("#registryMode")).toHaveValue("custom", { timeout: 20_000 });
+});
+
+test("bend sweep populates the table and downloads csv", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#rings").evaluate((el) => {
+    const input = el as HTMLInputElement;
+    input.value = "1";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.locator("#monomers").evaluate((el) => {
+    const input = el as HTMLInputElement;
+    input.value = "24";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#sweepBtn").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("actin_bundle_3pb.csv");
+  await expect(page.locator("#sweepTable")).toContainText("fit EI", { timeout: 30_000 });
+});
