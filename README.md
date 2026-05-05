@@ -1,5 +1,4 @@
-# Actin Bundle Toy Model
-
+# [Actin Bundle Toy Model](https://cabb99.github.io/actin_toy_model/)
 This project is a Vite + vanilla TypeScript app. 
 The simulation core can be tested without the DOM.
 
@@ -15,6 +14,7 @@ The simulation core can be tested without the DOM.
 - `conda activate actin_toy_model` activates it.
 - `npm run dev` starts the local app.
 - `npm run build` runs TypeScript checking and builds both `index.html` and the compatibility `toy_model.html` entry.
+- `npm run build:pages` builds the same app with the `/actin_toy_model/` base path used by GitHub Pages.
 - `npm test` runs unit tests for model and simulation behavior.
 - `npm run test:e2e` runs Playwright browser tests.
 

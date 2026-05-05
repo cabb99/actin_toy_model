@@ -31,6 +31,7 @@ npx playwright install chromium
 npm run dev       # start local Vite dev server
 npm test          # run Vitest unit tests
 npm run build     # TypeScript check + production Vite build
+npm run build:pages # production build with the GitHub Pages base path
 npm run test:e2e  # run Playwright browser tests
 npm run check     # TypeScript check only
 ```
