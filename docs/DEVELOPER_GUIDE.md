@@ -85,7 +85,7 @@ Use this as the quick “is it already here?” checklist.
 | Steric repulsion | `src/simulation/forces.ts` |
 | Damped/noisy integration and kick | `step` and `kick` in `src/simulation/forces.ts` |
 | FIRE minimization | `src/simulation/fire.ts` |
-| Current displacement-based 3-point bend | `src/simulation/topology.ts`, `src/simulation/forces.ts`, `src/simulation/sweep.ts` |
+| Current angle-controlled 3-point bend and log-scale stiffness | `src/simulation/topology.ts`, `src/simulation/forces.ts`, `src/simulation/sweep.ts`, `src/ui/dom.ts` |
 | CSV export data | `src/simulation/sweep.ts`, `src/main.ts` |
 | Canvas rendering | `src/render/canvasRenderer.ts` |
 | Live readout and sweep table | `src/ui/readout.ts` |
@@ -103,7 +103,7 @@ yet.
 | Actin polarity flips | Type metadata in `src/model/types.ts`; filament setup in `src/simulation/topology.ts`; compatibility logic near helicity helpers |
 | Axial offsets between filaments | Params/types in `src/model/`; bead placement and compatible monomer matching in `src/simulation/topology.ts` |
 | Bundle twist or pre-strain | Initial bead placement in `resetSystem`; possible force terms in `src/simulation/forces.ts` |
-| Angle-based 3-point bending | Selection setup in `topology.ts`; angle penalty in `forces.ts`; sweep output in `sweep.ts`; UI in `src/ui/` |
+| Additional bend/twist perturbation terms | Selection setup in `topology.ts`; force terms in `forces.ts`; sweep output in `sweep.ts`; UI in `src/ui/` |
 | Multi-layer endpoint/center selections | Selection helper module under `src/simulation/`, then called from perturbation setup |
 | Parameter sweeps | Start in `src/simulation/sweep.ts`; split to `src/simulation/experiments/` if it grows |
 | Saved JSON metadata | Serialization helpers under `src/simulation/` or `src/model/`; download UI in `src/ui/` |
@@ -209,7 +209,7 @@ Current force groups:
 - angle-form filament bending
 - direct crosslink springs plus optional tangent-orthogonality penalty
 - steric repulsion
-- 3-point-bend perturbation springs
+- harmonic COM-angle 3-point-bend perturbation, controlled by `bendKAngle`
 - mouse grab spring
 
 Add a small deterministic unit test before changing force formulas.
@@ -236,13 +236,17 @@ Use these files:
 - `src/ui/readout.ts`: show live bending values.
 - `src/ui/template.ts` and `src/ui/dom.ts`: add controls and labels.
 
-For the planned angle-based bending mode, keep selection construction separate
-from force application. A good split is:
+The current angle-controlled mode keeps selection construction separate from
+force application. The split is:
 
 - topology builds left/center/right cross-section selections;
-- forces computes COMs and applies the angle penalty;
-- sweep records target angle, actual angle, moment/equivalent force, and derived
-  modulus.
+- forces computes the three current COMs, evaluates the harmonic A-B-C angle
+  energy, distributes center forces back to selected beads, and records the
+  reaction moment;
+- UI stores the stiffness slider as `bendKAngleLog10` and derives
+  `bendKAngle = 10^bendKAngleLog10` for the force kernel;
+- sweep records target angle, actual angle, angle error, reaction moment, angle
+  energy, and derived modulus.
 
 A useful future refactor is to introduce explicit perturbation data structures:
 
@@ -261,8 +265,9 @@ interface BendExperimentState {
 }
 ```
 
-That would make displacement-based and angle-based bending two modes of one
-experiment system rather than separate special cases.
+That would make the current angle-force bend and future twist or endpoint
+rotation constraints modes of one experiment system rather than separate
+special cases.
 
 ### Add More Realistic Actin Helicity
 
@@ -310,7 +315,7 @@ Do not make simulation modules depend on a renderer.
 
 ### Add A New Experiment Or Analysis Panel
 
-Examples: parameter sweeps, ABP comparison, registry heatmaps, force/deflection
+Examples: parameter sweeps, ABP comparison, registry heatmaps, force/angle
 plots, or persistence-length calibration.
 
 Recommended split:
@@ -370,8 +375,8 @@ Near-term refactors:
 
 - Move compatibility evaluation out of `topology.ts` once continuous helicity is
   added.
-- Introduce explicit perturbation/experiment state before adding angle-based
-  bending and multi-layer selections.
+- Introduce explicit perturbation/experiment state before adding endpoint
+  rotation tracking, twist metrics, and multiple bend/twist modes.
 - Split `forces.ts` by force term if new bending, twist, or ABP kinetics make it
   hard to scan.
 - Add a renderer factory when there is more than one renderer.

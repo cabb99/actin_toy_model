@@ -30,9 +30,9 @@ layer, a mutable simulation layer, browser/rendering adapters, and tests.
 - `src/simulation/` contains the executable mechanics: topology construction,
   bead/bond/linker creation, crosslink compatibility, registry scoring/Monte
   Carlo, force kernels, integration, FIRE minimization, and bending sweeps.
-  Future angle-based bending, multi-layer COM selections, 13-ish helicity
-  compatibility, axial offsets, bundle twist, polarity flips, ABP kinetics,
-  parameter sweeps, and worker kernels should live here.
+  Future twist/rotation perturbations, 13-ish helicity compatibility, axial
+  offsets, bundle twist, polarity flips, ABP kinetics, parameter sweeps, and
+  worker kernels should live here.
 - `src/render/` contains renderer adapters. The current implementation is Canvas
   2D. Future WebGL2/WebGPU renderers should implement the same `Renderer`
   interface and keep graphics buffers, shaders, and render caches out of the
@@ -58,7 +58,8 @@ layer, a mutable simulation layer, browser/rendering adapters, and tests.
   registries.
 - ABP presets for fascin, alpha-actinin, and CaMKII, including direct
   single-spring and internal-linker topologies.
-- Mouse grab perturbation, displacement-based 3-point bend, FIRE minimization,
+- Mouse grab perturbation, harmonic COM-angle 3-point bend using configurable
+  multi-layer selections and log-scale angle stiffness, FIRE minimization,
   bending CSV export, and live mechanical readouts.
 - Canvas rendering with face/registry overlays plus unit and browser tests.
 
@@ -67,8 +68,8 @@ layer, a mutable simulation layer, browser/rendering adapters, and tests.
 - More realistic continuous actin helicity, including selectable twist angles
   around the -150 to -170 degree range and angular compatibility thresholds for
   ABP binding.
-- Angle-based 3-point bending using COMs of bead selections around the left,
-  center, and right bending regions rather than only center displacement.
+- More advanced bending constraints, such as endpoint rotation tracking, twist
+  tracking, angle stiffness controls, and richer moment readouts.
 - Better experiment infrastructure: parameter sweeps, reproducible seeds, saved
   JSON metadata, CSV/JSON export bundles, and comparison plots.
 - Performance upgrades: WebGL2 rendering, Web Workers for force kernels and
@@ -83,7 +84,7 @@ layer, a mutable simulation layer, browser/rendering adapters, and tests.
 - Split compatibility evaluation out of `src/simulation/topology.ts` once both
   discrete 12-state and continuous angular-threshold helicity exist.
 - Introduce explicit perturbation/experiment data structures before adding
-  angle-based bending and multi-layer selections.
+  endpoint rotation tracking, twist metrics, and multiple bend/twist modes.
 - Split `src/simulation/forces.ts` by force term if new bending, twist, or ABP
   kinetics make it hard to scan.
 - Add a renderer factory when WebGL2 is reintroduced.

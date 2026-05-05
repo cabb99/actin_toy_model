@@ -17,7 +17,9 @@ export const controlIds = [
   "dt",
   "steps",
   "sat",
-  "def",
+  "bendAngleDeg",
+  "bendLayers",
+  "bendKAngleLog10",
   "mcT0",
   "mcT1",
   "mcIters",
@@ -85,6 +87,8 @@ export function readParams(params: Params, refs: Pick<DomRefs, "controls" | "sel
     (params as unknown as Record<string, number>)[key] = Number(el.value);
   }
   params.steps = Math.round(params.steps);
+  params.bendLayers = Math.round(params.bendLayers);
+  params.bendKAngle = 10 ** params.bendKAngleLog10;
   params.sigma = Math.max(2.0, (params.a || 1) * 0.55);
   params.drag = 0.96;
   params.registryMode = refs.selects.registryMode.value as Params["registryMode"];
@@ -116,7 +120,9 @@ export function updateLabels(params: Params, controls: Controls, values: ValueLa
   values.dt.textContent = params.dt.toFixed(4);
   values.steps.textContent = params.steps.toString();
   values.sat.textContent = params.sat.toFixed(2);
-  values.def.textContent = params.def.toFixed(1);
+  values.bendAngleDeg.textContent = params.bendAngleDeg.toFixed(0);
+  values.bendLayers.textContent = Math.round(params.bendLayers).toString();
+  values.bendKAngleLog10.textContent = `${params.bendKAngle.toExponential(2)} (10^${params.bendKAngleLog10.toFixed(2)})`;
   values.mcT0.textContent = params.mcT0.toFixed(2);
   values.mcT1.textContent = params.mcT1.toFixed(3);
   values.mcIters.textContent = Math.round(params.mcIters).toString();

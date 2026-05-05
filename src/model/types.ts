@@ -18,7 +18,10 @@ export interface Params {
   dt: number;
   steps: number;
   sat: number;
-  def: number;
+  bendAngleDeg: number;
+  bendLayers: number;
+  bendKAngleLog10: number;
+  bendKAngle: number;
   mcT0: number;
   mcT1: number;
   mcIters: number;
@@ -97,9 +100,11 @@ export interface EnergyBreakdown {
 }
 
 export interface SweepSample {
-  defTarget: number;
-  actualDef: number;
-  force: number;
+  angleTargetDeg: number;
+  actualAngleDeg: number;
+  angleErrorDeg: number;
+  moment: number;
+  energy: number;
   ei: number;
   converged?: boolean;
   iters?: number;
@@ -123,14 +128,22 @@ export interface SimulationState {
   grabTarget: Vec3;
   grabKspring: number;
   perturb: {
-    ramForceX: number;
-    actualDef: number;
+    angleMoment: number;
     samples: SweepSample[];
   };
   bend: {
-    com0: Vec3;
+    leftCom0: Vec3;
+    centerCom0: Vec3;
+    rightCom0: Vec3;
+    leftBeads: number[];
     centerBeads: number[];
-    kRam: number;
+    rightBeads: number[];
+    targetAngleDeg: number;
+    actualAngleDeg: number;
+    angleErrorDeg: number;
+    angleEnergy: number;
+    angleMoment: number;
+    bendDir: Vec3;
   };
   view: ViewState;
   display: DisplayState;

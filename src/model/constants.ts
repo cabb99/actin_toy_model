@@ -80,6 +80,7 @@ export function actinKtheta(b: number): number {
 export function defaultParams(): Params {
   const b = 2.75;
   const a = 11.0;
+  const bendKAngle = 5000;
   return {
     rings: 2,
     monomers: 96,
@@ -95,7 +96,10 @@ export function defaultParams(): Params {
     dt: 0.002,
     steps: 6,
     sat: 1,
-    def: 0,
+    bendAngleDeg: 180,
+    bendLayers: 3,
+    bendKAngleLog10: Math.log10(bendKAngle),
+    bendKAngle,
     mcT0: 8,
     mcT1: 0.05,
     mcIters: 4000,

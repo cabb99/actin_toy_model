@@ -14,56 +14,57 @@ export interface SweepResult {
 export function sweepBend(
   state: SimulationState,
   params: Params,
-  maxDef = 30,
+  minAngleDeg = 0,
   steps = 16,
   equilIters = 600,
 ): SweepResult {
   const samples: SweepSample[] = [];
-  const originalDef = params.def;
+  const originalAngle = params.bendAngleDeg;
   params.perturbMode = "bend3";
   applyPerturbationConstraints(state, params);
 
   const L = (params.monomers - 1) * params.b;
   for (let s = 0; s <= steps; s++) {
-    const defTarget = (s / steps) * maxDef;
-    params.def = defTarget;
+    const angleTargetDeg = 180 - (s / steps) * (180 - minAngleDeg);
+    params.bendAngleDeg = angleTargetDeg;
     const fTol = Math.max(0.05, 0.001 * params.kcl);
     const res = fireMinimize(state, params, equilIters, fTol);
     computeForces(state, params);
-    const force = state.perturb.ramForceX;
-    const actualDef = state.perturb.actualDef;
-    const ei = Math.abs(actualDef) > 1e-6 ? (force * L * L * L) / (48 * actualDef) : NaN;
-    samples.push({ defTarget, actualDef, force, ei, converged: res.converged, iters: res.iters });
+    const actualAngleDeg = state.bend.actualAngleDeg;
+    const actualTheta = (actualAngleDeg * Math.PI) / 180;
+    const foldAngle = Math.abs(Math.PI - actualTheta);
+    const moment = state.bend.angleMoment;
+    const energy = state.bend.angleEnergy;
+    const ei = foldAngle > 1e-6 ? (Math.abs(moment) * L) / foldAngle : NaN;
+    samples.push({
+      angleTargetDeg,
+      actualAngleDeg,
+      angleErrorDeg: state.bend.angleErrorDeg,
+      moment,
+      energy,
+      ei,
+      converged: res.converged,
+      iters: res.iters,
+    });
   }
 
-  params.def = originalDef;
+  params.bendAngleDeg = originalAngle;
   state.perturb.samples = samples;
 
-  let EI = NaN;
-  if (samples.length >= 3) {
-    const fit = samples.slice(0, Math.min(5, samples.length));
-    let sx = 0;
-    let sy = 0;
-    let sxx = 0;
-    let sxy = 0;
-    for (const sample of fit) {
-      sx += sample.actualDef;
-      sy += sample.force;
-      sxx += sample.actualDef * sample.actualDef;
-      sxy += sample.actualDef * sample.force;
-    }
-    const nFit = fit.length;
-    const slope = (nFit * sxy - sx * sy) / (nFit * sxx - sx * sx + 1e-12);
-    EI = (slope * L * L * L) / 48;
-  }
+  const finiteEi = samples
+    .filter((sample) => sample.angleTargetDeg < 179 && Number.isFinite(sample.ei))
+    .map((sample) => sample.ei);
+  const EI = finiteEi.length ? finiteEi.reduce((sum, value) => sum + value, 0) / finiteEi.length : NaN;
 
   const csv = [
-    "defTarget_nm,defActual_nm,force_pN,EI_pN_nm2",
+    "angleTarget_deg,angleActual_deg,angleError_deg,moment_pN_nm,energy_pN_nm,EI_pN_nm2",
     ...samples.map((s) =>
       [
-        s.defTarget.toFixed(3),
-        s.actualDef.toFixed(3),
-        s.force.toFixed(3),
+        s.angleTargetDeg.toFixed(3),
+        s.actualAngleDeg.toFixed(3),
+        s.angleErrorDeg.toFixed(3),
+        s.moment.toFixed(3),
+        s.energy.toFixed(3),
         Number.isFinite(s.ei) ? s.ei.toFixed(1) : "",
       ].join(","),
     ),

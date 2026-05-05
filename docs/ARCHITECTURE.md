@@ -47,13 +47,14 @@ such as stiffnesses, timestep, and temperature are read each frame.
   backbone bonds/bends, ABP internal beads, crosslinks, typed-array sync, and
   perturbation selection setup.
 - `src/simulation/forces.ts` owns harmonic bond forces, angle bending forces,
-  crosslink/perpendicular forces, steric repulsion, perturbation springs, mouse
+  crosslink/perpendicular forces, steric repulsion, COM-angle perturbation forces, mouse
   grab force, timestep integration, and kicks.
 - `src/simulation/registry.ts` owns registry scoring and Monte Carlo registry
   optimization.
 - `src/simulation/fire.ts` owns the FIRE minimizer used by static bending
   sweeps.
-- `src/simulation/sweep.ts` owns the current 3-point-bend sweep and CSV data.
+- `src/simulation/sweep.ts` owns the current angle-controlled 3-point-bend sweep
+  and CSV data.
 - `src/render/` owns render adapters. The current adapter is Canvas 2D. A
   future `WebGlRenderer` should implement the same `Renderer` interface.
 - `src/ui/` owns DOM lookup, app shell HTML, label/readout rendering, and table
@@ -110,29 +111,38 @@ For physics changes, add a small deterministic unit test first using
 - Saturation control over compatible sites.
 - Steric repulsion between neighboring filaments.
 - Mouse grab perturbation.
-- Current 3-point-bend mode using center-section displacement and FIRE
-  minimization, with CSV export.
+- Current 3-point-bend mode using left/center/right multi-layer COM sections,
+  a harmonic A-B-C COM angle force with log-scale stiffness control, FIRE
+  minimization, and CSV export.
 
 ## Roadmap And Where To Add Things
 
-### Angle-Based 3-Point Bending
+### More Advanced 3-Point Bending
 
-Goal: replace or supplement center distance displacement with a prescribed bend
-angle between three selected bundle cross-sections.
+The current implementation controls the ABC bend angle by choosing
+left/center/right COM sections and applying a direct harmonic angle force to
+those three effective particles. The center forces are distributed back to all
+beads in the selected groups by equal centroid weights. Endpoint sections are
+not pinned by this perturbation.
+
+The analytic angle gradient is singular near exactly 0° and 180°. The force
+kernel uses a small deterministic transverse regularization in that limit so a
+perfectly straight bundle can begin bending toward a lower target angle.
+
+Next goal: add twist/endpoint-rotation tracking and make the moment/modulus
+readout more physically calibrated.
 
 Where to work:
 
-- Add new perturbation params and types in `src/model/types.ts`, for example an
-  angle target, endpoint layer count, and section radius/layer count.
-- Change selection construction in `src/simulation/topology.ts`. Instead of only
-  clamping one bead layer at each end and pushing the middle layer, build three
-  cross-section selections: left, center, and right. Each selection should use
-  the center of mass of beads around the target axial layer, with a configurable
-  axial half-width up to about 10 layers.
-- Change perturbation forces in `src/simulation/forces.ts`. Compute COMs for the
-  three selections, derive the current angle at the center COM, and apply forces
-  from an angle penalty rather than an x-displacement ram. Keep reaction-force
-  bookkeeping separate from energy bookkeeping.
+- Add explicit perturbation params and types in `src/model/types.ts` for user-
+  controlled angular stiffness, twist tracking, and optional endpoint rotation
+  constraints.
+- Refine selection construction in `src/simulation/topology.ts` if the
+  left/center/right COM sections need radial filtering or nonuniform layer
+  weights.
+- Change perturbation forces in `src/simulation/forces.ts` if adding new angle,
+  twist, or endpoint-rotation terms. Keep reaction moment bookkeeping separate
+  from energy bookkeeping.
 - Change sweep/readout naming in `src/simulation/sweep.ts` and
   `src/ui/readout.ts` so the CSV reports target angle, actual angle, moment or
   equivalent force, and the derived bending modulus consistently.

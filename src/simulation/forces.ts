@@ -1,11 +1,140 @@
 import { currentAbpEffective } from "../model/abp";
-import type { Params, Rng, SimulationState } from "../model/types";
+import type { Params, Rng, SimulationState, Vec3 } from "../model/types";
 import { emptyEnergy } from "./state";
-import { syncTypedToBeads } from "./topology";
+import { selectionCom, syncTypedToBeads } from "./topology";
 
 export function zeroForces(state: SimulationState): void {
   state.frc.fill(0);
   state.energy = emptyEnergy();
+}
+
+function clamp(x: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, x));
+}
+
+function distributeCenterForce(state: SimulationState, group: number[], force: Vec3): void {
+  if (!group.length) return;
+  const share = 1 / group.length;
+  for (const idx of group) {
+    const i3 = idx * 3;
+    state.frc[i3] += force.x * share;
+    state.frc[i3 + 1] += force.y * share;
+    state.frc[i3 + 2] += force.z * share;
+  }
+}
+
+function resetAngleBendReadout(state: SimulationState): void {
+  state.perturb.angleMoment = 0;
+  state.bend.targetAngleDeg = 180;
+  state.bend.actualAngleDeg = 180;
+  state.bend.angleErrorDeg = 0;
+  state.bend.angleEnergy = 0;
+  state.bend.angleMoment = 0;
+}
+
+function applySingularAngleRegularization(
+  state: SimulationState,
+  delta: number,
+  dEdTheta: number,
+  armLength: number,
+): void {
+  if (Math.abs(delta) < 1e-10) return;
+  const dir = state.bend.bendDir;
+  const dirNorm = Math.hypot(dir.x, dir.y, dir.z) || 1;
+  const sign = delta > 0 ? 1 : -1;
+  const mag = Math.abs(dEdTheta) / Math.max(1, armLength);
+  const bx = (sign * mag * dir.x) / dirNorm;
+  const by = (sign * mag * dir.y) / dirNorm;
+  const bz = (sign * mag * dir.z) / dirNorm;
+  distributeCenterForce(state, state.bend.leftBeads, { x: -0.5 * bx, y: -0.5 * by, z: -0.5 * bz });
+  distributeCenterForce(state, state.bend.centerBeads, { x: bx, y: by, z: bz });
+  distributeCenterForce(state, state.bend.rightBeads, { x: -0.5 * bx, y: -0.5 * by, z: -0.5 * bz });
+}
+
+function applyComAngleForce(state: SimulationState, params: Params): void {
+  const left = state.bend.leftBeads;
+  const center = state.bend.centerBeads;
+  const right = state.bend.rightBeads;
+  if (!left.length || !center.length || !right.length) {
+    resetAngleBendReadout(state);
+    return;
+  }
+
+  const RA = selectionCom(state, left);
+  const RB = selectionCom(state, center);
+  const RC = selectionCom(state, right);
+  const ux = RA.x - RB.x;
+  const uy = RA.y - RB.y;
+  const uz = RA.z - RB.z;
+  const vx = RC.x - RB.x;
+  const vy = RC.y - RB.y;
+  const vz = RC.z - RB.z;
+  const a = Math.hypot(ux, uy, uz);
+  const b = Math.hypot(vx, vy, vz);
+  if (a < 1e-9 || b < 1e-9) {
+    resetAngleBendReadout(state);
+    return;
+  }
+
+  const uhat = { x: ux / a, y: uy / a, z: uz / a };
+  const vhat = { x: vx / b, y: vy / b, z: vz / b };
+  const cosTheta = clamp(uhat.x * vhat.x + uhat.y * vhat.y + uhat.z * vhat.z, -1, 1);
+  const theta = Math.acos(cosTheta);
+  const targetDeg = clamp(params.bendAngleDeg, 0, 180);
+  const theta0 = (targetDeg * Math.PI) / 180;
+  const delta = theta - theta0;
+  const energy = 0.5 * params.bendKAngle * delta * delta;
+  const dEdTheta = params.bendKAngle * delta;
+
+  state.bend.targetAngleDeg = targetDeg;
+  state.bend.actualAngleDeg = (theta * 180) / Math.PI;
+  state.bend.angleErrorDeg = (delta * 180) / Math.PI;
+  state.bend.angleEnergy = energy;
+  state.bend.angleMoment = -dEdTheta;
+  state.perturb.angleMoment = state.bend.angleMoment;
+  state.energy.perturb += energy;
+
+  if (Math.abs(delta) < 1e-10) return;
+
+  const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+  if (sinTheta < 1e-4) {
+    applySingularAngleRegularization(state, delta, dEdTheta, 0.5 * (a + b));
+    return;
+  }
+
+  const invA = 1 / (a * sinTheta);
+  const invB = 1 / (b * sinTheta);
+  const gradA = {
+    x: (cosTheta * uhat.x - vhat.x) * invA,
+    y: (cosTheta * uhat.y - vhat.y) * invA,
+    z: (cosTheta * uhat.z - vhat.z) * invA,
+  };
+  const gradC = {
+    x: (cosTheta * vhat.x - uhat.x) * invB,
+    y: (cosTheta * vhat.y - uhat.y) * invB,
+    z: (cosTheta * vhat.z - uhat.z) * invB,
+  };
+  const gradB = {
+    x: -(gradA.x + gradC.x),
+    y: -(gradA.y + gradC.y),
+    z: -(gradA.z + gradC.z),
+  };
+
+  distributeCenterForce(state, left, {
+    x: -dEdTheta * gradA.x,
+    y: -dEdTheta * gradA.y,
+    z: -dEdTheta * gradA.z,
+  });
+  distributeCenterForce(state, center, {
+    x: -dEdTheta * gradB.x,
+    y: -dEdTheta * gradB.y,
+    z: -dEdTheta * gradB.z,
+  });
+  distributeCenterForce(state, right, {
+    x: -dEdTheta * gradC.x,
+    y: -dEdTheta * gradC.y,
+    z: -dEdTheta * gradC.z,
+  });
 }
 
 export function computeForces(state: SimulationState, params: Params): void {
@@ -194,42 +323,9 @@ export function computeForces(state: SimulationState, params: Params): void {
       state.energy.perturb += 0.5 * kPin * (ex * ex + ey * ey + ez * ez);
     }
 
-    const center = state.bend.centerBeads;
-    if (center.length > 0) {
-      let cx = 0;
-      let cy = 0;
-      let cz = 0;
-      for (const idx of center) {
-        const i3 = idx * 3;
-        cx += pos[i3];
-        cy += pos[i3 + 1];
-        cz += pos[i3 + 2];
-      }
-      cx /= center.length;
-      cy /= center.length;
-      cz /= center.length;
-
-      const com0 = state.bend.com0;
-      const ex = cx - (com0.x + params.def);
-      const ey = cy - com0.y;
-      const ez = cz - com0.z;
-      const kRam = state.bend.kRam;
-      const fxPB = -(kRam / center.length) * ex;
-      const fyPB = -(kRam / center.length) * ey;
-      const fzPB = -(kRam / center.length) * ez;
-      for (const idx of center) {
-        const i3 = idx * 3;
-        frc[i3] += fxPB;
-        frc[i3 + 1] += fyPB;
-        frc[i3 + 2] += fzPB;
-      }
-      state.perturb.ramForceX = -kRam * ex;
-      state.perturb.actualDef = cx - com0.x;
-      state.energy.perturb += 0.5 * kRam * (ex * ex + ey * ey + ez * ez);
-    }
+    applyComAngleForce(state, params);
   } else {
-    state.perturb.ramForceX = 0;
-    state.perturb.actualDef = 0;
+    resetAngleBendReadout(state);
   }
 
   if (state.grabbedBead >= 0) {

@@ -33,6 +33,13 @@ test("controls update labels and display toggles stay stable", async ({ page }) 
   await page.locator("#faceToggle").click();
   await expect(page.locator("#faceToggle")).toHaveClass(/on/);
   await expect(page.locator("#legend")).toContainText("Exposed face");
+
+  await page.locator("#bendKAngleLog10").evaluate((el) => {
+    const input = el as HTMLInputElement;
+    input.value = "4";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("#bendKAngleLog10Val")).toContainText("1.00e+4");
 });
 
 test("monte carlo switches registry mode to custom", async ({ page }) => {

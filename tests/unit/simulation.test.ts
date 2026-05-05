@@ -5,7 +5,14 @@ import { computeForces } from "../../src/simulation/forces";
 import { createSeededRng } from "../../src/simulation/random";
 import { scoreRegistries } from "../../src/simulation/registry";
 import { createSimulationState } from "../../src/simulation/state";
-import { buildCrosslinks, compatibleAt, resetSystem, syncBeadsToTyped } from "../../src/simulation/topology";
+import {
+  angleDegAtB,
+  applyPerturbationConstraints,
+  buildCrosslinks,
+  compatibleAt,
+  resetSystem,
+  syncBeadsToTyped,
+} from "../../src/simulation/topology";
 
 function smallParams(overrides: Partial<Params> = {}): Params {
   return {
@@ -79,6 +86,25 @@ describe("topology", () => {
     expect(state.bonds.length - bondsBefore).toBe(6);
     expect(state.bends.length - bendsBefore).toBe(4);
   });
+
+  it("selects configurable COM layers for angle-based 3-point bending", () => {
+    const params = smallParams({ perturbMode: "bend3", bendLayers: 3 });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(6), false);
+    expect(state.bend.leftBeads).toHaveLength(state.filaments.length * 3);
+    expect(state.bend.centerBeads).toHaveLength(state.filaments.length * 3);
+    expect(state.bend.rightBeads).toHaveLength(state.filaments.length * 3);
+    expect([...state.bend.leftBeads, ...state.bend.centerBeads, ...state.bend.rightBeads].some((idx) => state.beads[idx].pinned)).toBe(false);
+  });
+
+  it("measures the ABC angle from the selected COM sections", () => {
+    const params = smallParams({ perturbMode: "bend3", bendLayers: 3 });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(7), false);
+    applyPerturbationConstraints(state, params);
+    const angle = angleDegAtB(state.bend.leftCom0, state.bend.centerCom0, state.bend.rightCom0);
+    expect(angle).toBeCloseTo(180, 4);
+  });
 });
 
 describe("force kernel characterization", () => {
@@ -121,5 +147,58 @@ describe("force kernel characterization", () => {
     syncBeadsToTyped(state);
     computeForces(state, params);
     expect(state.energy.bend).toBeCloseTo(0);
+  });
+
+  it("applies a harmonic angle force to the three selected COM groups", () => {
+    const params = smallParams({
+      monomers: 3,
+      perturbMode: "bend3",
+      bendAngleDeg: 60,
+      bendKAngle: 100,
+      bendKAngleLog10: 2,
+      rep: 0,
+    });
+    const state = createSimulationState();
+    state.beads = [
+      { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 0, y0: 0, z0: 0, pinned: false },
+      { x: 1, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 1, x0: 1, y0: 0, z0: 0, pinned: false },
+      { x: 1, y: 1, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 2, x0: 1, y0: 1, z0: 0, pinned: false },
+    ];
+    state.bend.leftBeads = [0];
+    state.bend.centerBeads = [1];
+    state.bend.rightBeads = [2];
+    syncBeadsToTyped(state);
+
+    computeForces(state, params);
+
+    expect(state.bend.actualAngleDeg).toBeCloseTo(90);
+    expect(state.bend.angleErrorDeg).toBeCloseTo(30);
+    expect(state.energy.perturb).toBeCloseTo(0.5 * params.bendKAngle * (Math.PI / 6) ** 2);
+    expect(state.bend.angleMoment).toBeCloseTo(-params.bendKAngle * (Math.PI / 6));
+    expect(state.frc[0] + state.frc[3] + state.frc[6]).toBeCloseTo(0);
+    expect(state.frc[1] + state.frc[4] + state.frc[7]).toBeCloseTo(0);
+    expect(state.frc[2] + state.frc[5] + state.frc[8]).toBeCloseTo(0);
+  });
+
+  it("regularizes an exactly straight COM angle without pinning the tips", () => {
+    const params = smallParams({ monomers: 3, perturbMode: "bend3", bendAngleDeg: 120, rep: 0 });
+    const state = createSimulationState();
+    state.beads = [
+      { x: 0, y: 0, z: -1, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 0, y0: 0, z0: -1, pinned: false },
+      { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 1, x0: 0, y0: 0, z0: 0, pinned: false },
+      { x: 0, y: 0, z: 1, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 2, x0: 0, y0: 0, z0: 1, pinned: false },
+    ];
+    state.bend.leftBeads = [0];
+    state.bend.centerBeads = [1];
+    state.bend.rightBeads = [2];
+    state.bend.bendDir = { x: 1, y: 0, z: 0 };
+    syncBeadsToTyped(state);
+
+    computeForces(state, params);
+
+    expect(state.beads.some((bead) => bead.pinned)).toBe(false);
+    expect(state.bend.actualAngleDeg).toBeCloseTo(180);
+    expect(state.frc[3]).toBeGreaterThan(0);
+    expect(state.frc[0] + state.frc[3] + state.frc[6]).toBeCloseTo(0);
   });
 });

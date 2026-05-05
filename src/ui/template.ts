@@ -67,16 +67,18 @@ export const APP_HTML = String.raw`
         <label>Mode</label>
         <select id="perturbMode">
           <option value="none">None (free)</option>
-          <option value="bend3">3-point bend (clamp ends, push centre)</option>
+          <option value="bend3">3-point bend (angle, COM sections)</option>
         </select>
       </div>
-      <div class="control"><label>Centre displacement Δ (nm) <span id="defVal"></span></label><input id="def" type="range" min="0" max="60" step="0.5" value="0" /></div>
+      <div class="control"><label>ABC bend angle (deg) <span id="bendAngleDegVal"></span></label><input id="bendAngleDeg" type="range" min="0" max="180" step="1" value="180" /></div>
+      <div class="control"><label>COM layers / point <span id="bendLayersVal"></span></label><input id="bendLayers" type="range" min="1" max="10" step="1" value="3" /></div>
+      <div class="control"><label>Angle stiffness k<sub>ABC</sub> (pN·nm/rad²) <span id="bendKAngleLog10Val"></span></label><input id="bendKAngleLog10" type="range" min="-1" max="7" step="0.05" value="3.70" /></div>
       <div class="buttons three">
-        <button id="sweepBtn">Sweep Δ → CSV</button>
-        <button id="resetForcesBtn">Zero deflection</button>
+        <button id="sweepBtn">Sweep angle → CSV</button>
+        <button id="resetForcesBtn">Straight angle</button>
         <button id="clearCsvBtn">Clear data</button>
       </div>
-      <div id="sweepTable" class="sweep-table"><em>No data - click "Sweep Δ → CSV" to generate.</em></div>
+      <div id="sweepTable" class="sweep-table"><em>No data - click "Sweep angle → CSV" to generate.</em></div>
 
       <h2>Display</h2>
       <div class="buttons three">

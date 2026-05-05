@@ -85,6 +85,10 @@ refs.controls.clDist.addEventListener("change", () => {
   commitLiveParams();
   rebuildCrosslinkTopology();
 });
+refs.controls.bendLayers.addEventListener("change", () => {
+  commitLiveParams();
+  applyPerturbationConstraints(state, params);
+});
 
 refs.selects.registryMode.addEventListener("change", () => {
   commitLiveParams();
@@ -147,13 +151,14 @@ document.getElementById("sweepBtn")?.addEventListener("click", () => {
   refs.selects.perturbMode.value = "bend3";
   commitLiveParams();
   applyPerturbationConstraints(state, params);
-  const result = sweepBend(state, params, 30, 16, 1500);
+  const result = sweepBend(state, params, 0, 16, 1500);
   downloadCsv(result.csv);
   renderSweepTable(refs.sweepTable, result.samples, { eiSlope: result.EI, L: result.L });
 });
 document.getElementById("resetForcesBtn")?.addEventListener("click", () => {
-  refs.controls.def.value = "0";
+  refs.controls.bendAngleDeg.value = "180";
   commitLiveParams();
+  applyPerturbationConstraints(state, params);
 });
 document.getElementById("clearCsvBtn")?.addEventListener("click", () => {
   state.perturb.samples = [];

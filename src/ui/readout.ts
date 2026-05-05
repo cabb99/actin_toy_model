@@ -38,17 +38,17 @@ export function renderReadout(readout: HTMLElement, state: SimulationState, para
 
   const bendInfo =
     params.perturbMode === "bend3"
-      ? `<br>3-pt bend: Δ tgt=${params.def.toFixed(2)} nm · Δ COM=${state.perturb.actualDef.toFixed(
-          2,
-        )} nm · F=${state.perturb.ramForceX.toFixed(2)} pN`
+      ? `<br>3-pt bend: θ tgt=${params.bendAngleDeg.toFixed(1)}° · θ ABC=${state.bend.actualAngleDeg.toFixed(
+          1,
+        )}° · err=${state.bend.angleErrorDeg.toFixed(2)}° · layers=${params.bendLayers.toFixed(0)} · k=${params.bendKAngle.toExponential(2)} · M=${state.bend.angleMoment.toFixed(2)} pN·nm`
       : "";
 
   const eiInfo =
-    params.perturbMode === "bend3" && Math.abs(state.perturb.actualDef) > 0.05
+    params.perturbMode === "bend3" && Math.abs(180 - state.bend.actualAngleDeg) > 0.05
       ? (() => {
           const L = (params.monomers - 1) * params.b;
-          const F = state.perturb.ramForceX;
-          const EI = (F * L * L * L) / (48 * state.perturb.actualDef);
+          const foldAngle = (Math.abs(180 - state.bend.actualAngleDeg) * Math.PI) / 180;
+          const EI = (Math.abs(state.bend.angleMoment) * L) / foldAngle;
           const Lp = EI / KBT_PN_NM / 1000;
           return `<br>EI ≈ ${EI.toFixed(0)} pN·nm² (Lp ≈ ${Lp.toFixed(2)} µm)`;
         })()
@@ -78,7 +78,7 @@ export function renderSweepTable(
   result: { eiSlope?: number; L?: number } = {},
 ): void {
   if (!samples.length) {
-    el.innerHTML = '<em>No data - click "Sweep Δ → CSV" to generate.</em>';
+    el.innerHTML = '<em>No data - click "Sweep angle → CSV" to generate.</em>';
     return;
   }
 
@@ -90,9 +90,11 @@ export function renderSweepTable(
     .map((s) => {
       const lpRow = Number.isFinite(s.ei) ? (s.ei / KBT_PN_NM / 1000).toFixed(2) : "";
       return `<tr>
-        <td style="text-align:right">${s.defTarget.toFixed(2)}</td>
-        <td style="text-align:right">${s.actualDef.toFixed(2)}</td>
-        <td style="text-align:right">${s.force.toFixed(2)}</td>
+        <td style="text-align:right">${s.angleTargetDeg.toFixed(1)}</td>
+        <td style="text-align:right">${s.actualAngleDeg.toFixed(1)}</td>
+        <td style="text-align:right">${s.angleErrorDeg.toFixed(2)}</td>
+        <td style="text-align:right">${s.moment.toFixed(2)}</td>
+        <td style="text-align:right">${s.energy.toFixed(0)}</td>
         <td style="text-align:right">${Number.isFinite(s.ei) ? s.ei.toFixed(0) : ""}</td>
         <td style="text-align:right">${lpRow}</td>
       </tr>`;
@@ -106,9 +108,11 @@ export function renderSweepTable(
     <table style="width:100%; border-collapse:collapse; font-size:11px">
       <thead>
         <tr style="color:var(--text); border-bottom:1px solid var(--line)">
-          <th style="text-align:right; padding:2px 4px">Δ tgt (nm)</th>
-          <th style="text-align:right; padding:2px 4px">Δ COM (nm)</th>
-          <th style="text-align:right; padding:2px 4px">F (pN)</th>
+          <th style="text-align:right; padding:2px 4px">θ tgt (°)</th>
+          <th style="text-align:right; padding:2px 4px">θ ABC (°)</th>
+          <th style="text-align:right; padding:2px 4px">err (°)</th>
+          <th style="text-align:right; padding:2px 4px">M (pN·nm)</th>
+          <th style="text-align:right; padding:2px 4px">U (pN·nm)</th>
           <th style="text-align:right; padding:2px 4px">EI (pN·nm²)</th>
           <th style="text-align:right; padding:2px 4px">Lp (µm)</th>
         </tr>

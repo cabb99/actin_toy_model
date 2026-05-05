@@ -1,7 +1,7 @@
 import { HEX_DIRS, PHASE_LEN } from "../model/constants";
 import { currentAbpEffective } from "../model/abp";
 import { axialToXY, defaultRegistry, exposedK } from "../model/hex";
-import type { BeadMeta, Params, Rng, SimulationState } from "../model/types";
+import type { BeadMeta, Params, Rng, SimulationState, Vec3 } from "../model/types";
 import { randomRegistry } from "./random";
 
 export function beadIndex(params: Pick<Params, "monomers">, filamentId: number, m: number): number {
@@ -241,31 +241,114 @@ export function resetSystem(
 
 export function applyPerturbationConstraints(state: SimulationState, params: Params): void {
   for (const p of state.beads) p.pinned = false;
+  state.bend.leftBeads = [];
   state.bend.centerBeads = [];
+  state.bend.rightBeads = [];
   if (params.perturbMode !== "bend3") return;
 
   const last = params.monomers - 1;
   const mMid = Math.floor(last / 2);
-  let cx = 0;
-  let cy = 0;
-  let cz = 0;
-  let n = 0;
+  const layers = Math.max(1, Math.min(10, Math.round(params.bendLayers)));
+  const half = Math.floor(layers / 2);
+  const centerStart = Math.max(0, Math.min(last, mMid - half));
+  const centerEnd = Math.min(last, centerStart + layers - 1);
 
   for (const f of state.filaments) {
-    state.beads[beadIndex(params, f.id, 0)].pinned = true;
-    state.beads[beadIndex(params, f.id, last)].pinned = true;
-    const idx = beadIndex(params, f.id, mMid);
-    const p = state.beads[idx];
-    state.bend.centerBeads.push(idx);
-    cx += p.x0;
-    cy += p.y0;
-    cz += p.z0;
-    n++;
+    for (let dm = 0; dm < layers; dm++) {
+      const leftIdx = beadIndex(params, f.id, Math.min(last, dm));
+      const rightIdx = beadIndex(params, f.id, Math.max(0, last - dm));
+      state.bend.leftBeads.push(leftIdx);
+      state.bend.rightBeads.push(rightIdx);
+    }
+    for (let m = centerStart; m <= centerEnd; m++) {
+      state.bend.centerBeads.push(beadIndex(params, f.id, m));
+    }
   }
 
-  if (n > 0) {
-    state.bend.com0 = { x: cx / n, y: cy / n, z: cz / n };
+  state.bend.leftCom0 = selectionCom(state, state.bend.leftBeads, true);
+  state.bend.centerCom0 = selectionCom(state, state.bend.centerBeads, true);
+  state.bend.rightCom0 = selectionCom(state, state.bend.rightBeads, true);
+  updateAngleBendReference(state, params);
+}
+
+export function selectionCom(state: SimulationState, indices: number[], rest = false): Vec3 {
+  if (!indices.length) return { x: 0, y: 0, z: 0 };
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (const idx of indices) {
+    const p = state.beads[idx];
+    if (rest) {
+      x += p.x0;
+      y += p.y0;
+      z += p.z0;
+    } else {
+      const i3 = idx * 3;
+      x += state.pos[i3];
+      y += state.pos[i3 + 1];
+      z += state.pos[i3 + 2];
+    }
   }
+  return { x: x / indices.length, y: y / indices.length, z: z / indices.length };
+}
+
+export function angleDegAtB(A: Vec3, B: Vec3, C: Vec3): number {
+  const bax = A.x - B.x;
+  const bay = A.y - B.y;
+  const baz = A.z - B.z;
+  const bcx = C.x - B.x;
+  const bcy = C.y - B.y;
+  const bcz = C.z - B.z;
+  const ba = Math.hypot(bax, bay, baz) + 1e-12;
+  const bc = Math.hypot(bcx, bcy, bcz) + 1e-12;
+  let cosT = (bax * bcx + bay * bcy + baz * bcz) / (ba * bc);
+  cosT = Math.max(-1, Math.min(1, cosT));
+  return (Math.acos(cosT) * 180) / Math.PI;
+}
+
+export function updateAngleBendReference(state: SimulationState, params: Params): void {
+  const A = state.bend.leftCom0;
+  const B = state.bend.centerCom0;
+  const C = state.bend.rightCom0;
+  const dx = C.x - A.x;
+  const dy = C.y - A.y;
+  const dz = C.z - A.z;
+  const chord = Math.hypot(dx, dy, dz) + 1e-12;
+
+  // Used only to regularize exactly straight/closed COM angles, where the
+  // analytic angle gradient is singular. The regular perturbation force is
+  // computed from the current A-B-C angle in the force kernel.
+  let bx = 1;
+  let by = 0;
+  let bz = 0;
+  const dot = (bx * dx + by * dy + bz * dz) / (chord * chord);
+  bx -= dot * dx;
+  by -= dot * dy;
+  bz -= dot * dz;
+  let bn = Math.hypot(bx, by, bz);
+  if (bn < 1e-9) {
+    bx = 0;
+    by = 1;
+    bz = 0;
+    const dotY = (by * dy) / (chord * chord);
+    bx -= dotY * dx;
+    by -= dotY * dy;
+    bz -= dotY * dz;
+    bn = Math.hypot(bx, by, bz) || 1;
+  }
+  bx /= bn;
+  by /= bn;
+  bz /= bn;
+
+  const targetDeg = Math.max(0, Math.min(180, params.bendAngleDeg));
+  state.bend.bendDir = { x: bx, y: by, z: bz };
+  state.bend.targetAngleDeg = targetDeg;
+  state.bend.actualAngleDeg = angleDegAtB(A, B, C);
+  state.bend.angleErrorDeg = state.bend.actualAngleDeg - targetDeg;
+  const delta = (state.bend.angleErrorDeg * Math.PI) / 180;
+  state.bend.angleEnergy = 0.5 * params.bendKAngle * delta * delta;
+  state.bend.angleMoment = -params.bendKAngle * delta;
+  state.perturb.angleMoment = state.bend.angleMoment;
 }
 
 export function compatibleSiteCountPerPeriod(si: number, sj: number, k: number): number {
