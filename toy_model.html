@@ -280,6 +280,24 @@
       </div>
       <div class="buttons">
         <button id="rebuildBtn" class="full">Rebuild crosslinks (re-roll saturation)</button>
+      </div>
+      <div class="control">
+        <label>MC starting T₀ <span id="mcT0Val"></span></label>
+        <input id="mcT0" type="range" min="0.05" max="40" step="0.05" value="8" />
+      </div>
+      <div class="control">
+        <label>MC ending T₁ <span id="mcT1Val"></span></label>
+        <input id="mcT1" type="range" min="0.001" max="4" step="0.001" value="0.05" />
+      </div>
+      <div class="control">
+        <label>MC iterations <span id="mcItersVal"></span></label>
+        <input id="mcIters" type="range" min="500" max="40000" step="500" value="4000" />
+      </div>
+      <div class="control">
+        <label>MC skew penalty <span id="mcSkewVal"></span></label>
+        <input id="mcSkew" type="range" min="0" max="1" step="0.01" value="0.15" />
+      </div>
+      <div class="buttons">
         <button id="mcBtn" class="full">Optimize registries (Monte Carlo)</button>
       </div>
 
@@ -497,7 +515,8 @@
 
     const controlIds = [
       "rings","monomers","b","a","kb","clDist","ktheta","kcl","kperp","rep",
-      "temp","dt","steps","sat","def"
+      "temp","dt","steps","sat","def",
+      "mcT0","mcT1","mcIters","mcSkew",
     ];
     const controls = Object.fromEntries(controlIds.map(id => [id, document.getElementById(id)]));
     const values   = Object.fromEntries(controlIds.map(id => [id, document.getElementById(id + "Val")]));
@@ -506,8 +525,15 @@
     const selects = Object.fromEntries(selectIds.map(id => [id, document.getElementById(id)]));
 
     const state = {
+      // Hot path lives in Float32Arrays (interleaved x,y,z per bead). Bead
+      // objects carry metadata only; their .x/.y/.z fields are kept as a
+      // *snapshot* synced from state.pos at the end of each integration step,
+      // so UI/topology code can keep reading .x/.y/.z as before.
+      pos: new Float32Array(0),
+      vel: new Float32Array(0),
+      frc: new Float32Array(0),
       filaments: [],          // [{id, q, r, x, y, s}]
-      beads: [],              // [{x,y,z,vx,vy,vz,fx,fy,fz, f, m, color}]
+      beads: [],              // [{x,y,z,vx,vy,vz, f, m, x0,y0,z0, pinned, isInternal}]
       bonds: [],              // [ia, ib, rest]
       bends: [],              // [ia, ib, ic]
       crosslinks: [],         // [ia, ib, restLen]
@@ -562,13 +588,29 @@
     // Parameters
     // ---------------------------------------------------------------------
 
+    // Structural params change the *topology* (filament count, bead count per
+    // filament, lattice geometry) — they MUST only update synchronously with
+    // a full state rebuild, otherwise beadIndex() will produce stale offsets
+    // against the old state.beads array. So readStructuralParams is called
+    // only from resetSystem (and once at init), never per-frame.
+    const STRUCTURAL_KEYS = new Set(["rings", "monomers", "b", "a"]);
+
+    function readStructuralParams() {
+      params.rings    = Math.round(Number(controls.rings.value));
+      params.monomers = Math.round(Number(controls.monomers.value));
+      params.b        = Number(controls.b.value);
+      params.a        = Number(controls.a.value);
+    }
+
     function readParams() {
-      for (const [key, el] of Object.entries(controls)) params[key] = Number(el.value);
-      params.rings    = Math.round(params.rings);
-      params.monomers = Math.round(params.monomers);
-      params.steps    = Math.round(params.steps);
-      params.sigma    = Math.max(2.0, params.a * 0.55); // steric cutoff (nm)
-      params.drag     = 0.96;
+      // Live-tunable params — read every frame.
+      for (const [key, el] of Object.entries(controls)) {
+        if (STRUCTURAL_KEYS.has(key)) continue;
+        params[key] = Number(el.value);
+      }
+      params.steps   = Math.round(params.steps);
+      params.sigma   = Math.max(2.0, (params.a || 1) * 0.55); // steric cutoff (nm)
+      params.drag    = 0.96;
 
       params.registryMode = selects.registryMode.value;
       params.abpType      = selects.abpType.value;
@@ -576,10 +618,16 @@
     }
 
     function updateLabels() {
-      values.rings.textContent = `${params.rings} (${1 + 3 * params.rings * (params.rings + 1)} filaments)`;
-      values.monomers.textContent = params.monomers;
-      values.b.textContent  = params.b.toFixed(2);
-      values.a.textContent  = params.a.toFixed(1);
+      // Structural slider labels follow user intent (live), even though
+      // params.X only updates at committed rebuild.
+      const ringsLive    = Math.round(Number(controls.rings.value));
+      const monomersLive = Math.round(Number(controls.monomers.value));
+      const bLive        = Number(controls.b.value);
+      const aLive        = Number(controls.a.value);
+      values.rings.textContent = `${ringsLive} (${1 + 3 * ringsLive * (ringsLive + 1)} filaments)`;
+      values.monomers.textContent = monomersLive;
+      values.b.textContent  = bLive.toFixed(2);
+      values.a.textContent  = aLive.toFixed(1);
       values.kb.textContent = params.kb.toFixed(0);
       values.clDist.textContent = params.clDist.toFixed(1);
       // Angle form: κ_b = κ × b → Lp = κ × b / kBT.
@@ -593,6 +641,10 @@
       values.steps.textContent = params.steps;
       values.sat.textContent = params.sat.toFixed(2);
       values.def.textContent = params.def.toFixed(1);
+      values.mcT0.textContent    = params.mcT0.toFixed(2);
+      values.mcT1.textContent    = params.mcT1.toFixed(3);
+      values.mcIters.textContent = Math.round(params.mcIters).toString();
+      values.mcSkew.textContent  = params.mcSkew.toFixed(2);
     }
 
     // ---------------------------------------------------------------------
@@ -652,6 +704,42 @@
       const sj = state.filaments[fj].s;
       const oppK = (k + 3) % 6;
       return exposedK(m, si) === k && exposedK(m, sj) === oppK;
+    }
+
+    // ---- Typed-array sync helpers ---------------------------------------
+    // Called after topology rebuild — allocates fresh Float32Arrays sized to
+    // the current bead count and copies bead.x/.y/.z (and velocities, if any)
+    // into them. Velocities are preserved across rebuilds for filament beads
+    // already in state.beads at the same index, but the pragmatic choice is
+    // to zero everything since topology rebuilds are explicit user actions.
+    function syncBeadsToTyped() {
+      const N = state.beads.length;
+      const pos = new Float32Array(N * 3);
+      const vel = new Float32Array(N * 3);   // zeroed
+      const frc = new Float32Array(N * 3);   // zeroed
+      for (let i = 0; i < N; i++) {
+        const p = state.beads[i];
+        pos[i * 3]     = p.x;
+        pos[i * 3 + 1] = p.y;
+        pos[i * 3 + 2] = p.z;
+      }
+      state.pos = pos;
+      state.vel = vel;
+      state.frc = frc;
+    }
+
+    // Called at the end of each integration step — copies state.pos back into
+    // bead.x/.y/.z so UI / topology / mouse-grab code that still reads .x/.y
+    // sees the current frame. Cheap linear scan; ~0.1 ms for 10k beads.
+    function syncTypedToBeads() {
+      const N = state.beads.length;
+      const pos = state.pos;
+      for (let i = 0; i < N; i++) {
+        const p = state.beads[i];
+        p.x = pos[i * 3];
+        p.y = pos[i * 3 + 1];
+        p.z = pos[i * 3 + 2];
+      }
     }
 
     function addInternalBead(x, y, z) {
@@ -722,7 +810,9 @@
         counts.set(`${fi}-${fj}`, nLinks);
       }
       state.pairLinkCount = counts;
-      // Topology changed — internal beads/bonds were added — rebuild GL.
+      // Topology changed — re-allocate typed-array hot-path buffers and
+      // rebuild GL element buffers.
+      syncBeadsToTyped();
       rebuildGLTopology();
     }
 
@@ -763,6 +853,7 @@
     // ---------------------------------------------------------------------
 
     function resetSystem(randomize = false) {
+      readStructuralParams();   // topology snapshot (only place this happens)
       readParams();
       updateLabels();
       buildFilaments();
@@ -844,55 +935,50 @@
     // ---------------------------------------------------------------------
 
     function zeroForces() {
-      for (const p of state.beads) {
-        p.fx = p.fy = p.fz = 0;
-      }
+      // Float32Array.fill(0) is roughly memset speed.
+      state.frc.fill(0);
       state.energy = { bond: 0, bend: 0, crosslink: 0, orthogonal: 0, repulsion: 0,
                        perturb: 0, grab: 0 };
     }
 
-    function addForce(p, fx, fy, fz) {
-      p.fx += fx; p.fy += fy; p.fz += fz;
-    }
-
     function computeForces() {
       zeroForces();
-      const beads = state.beads;
+      const pos   = state.pos;
+      const frc   = state.frc;
+      const beads = state.beads;          // metadata only (.f, .m, .pinned, .x0,..)
 
       // ---- Harmonic bonds (backbone + ABP-internal). ----
       // bond entries are [ia, ib, restLen] for backbone or
       // [ia, ib, restLen, stiffness] for linker internal segments.
+      const kbDefault = params.kb;
       for (const bond of state.bonds) {
         const ia = bond[0], ib = bond[1], rest = bond[2];
-        const stiff = (bond.length > 3) ? bond[3] : params.kb;
-        const a = beads[ia], b = beads[ib];
-        const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        const stiff = (bond.length > 3) ? bond[3] : kbDefault;
+        const a3 = ia * 3, b3 = ib * 3;
+        const dx = pos[b3]   - pos[a3];
+        const dy = pos[b3+1] - pos[a3+1];
+        const dz = pos[b3+2] - pos[a3+2];
         const r = Math.hypot(dx, dy, dz) + 1e-12;
         const stretch = r - rest;
         const fmag = stiff * stretch / r;
         const fx = fmag * dx, fy = fmag * dy, fz = fmag * dz;
-        addForce(a,  fx,  fy,  fz);
-        addForce(b, -fx, -fy, -fz);
+        frc[a3]   += fx;  frc[a3+1] += fy;  frc[a3+2] += fz;
+        frc[b3]   -= fx;  frc[b3+1] -= fy;  frc[b3+2] -= fz;
         state.energy.bond += 0.5 * stiff * stretch * stretch;
       }
 
       // ---- Angle-based bending: U_m = κ (1 − cos θ_m) per joint. ----
-      // Bond vectors:  b1 = r_m − r_{m-1},   b2 = r_{m+1} − r_m
-      // Unit vectors:  e1 = b1/|b1|,         e2 = b2/|b2|
-      // cos θ = e1 · e2.    Forces (constant prefactor κ):
-      //   F_{m-1} = -(κ/|b1|) (e2 - cosθ e1)
-      //   F_{m+1} = +(κ/|b2|) (e1 - cosθ e2)
-      //   F_m     = -(F_{m-1} + F_{m+1})    (Newton's 3rd on the triplet)
-      // Compared to the old discrete Laplacian, this cleanly separates bond-
-      // stretching from bending and is correct at finite angles.
-      // Bend entries: [ia, ib, ic] (backbone, uses params.ktheta) or
-      //               [ia, ib, ic, kappa] (linker internal joint).
+      const ktDefault = params.ktheta;
       for (const bend of state.bends) {
         const ia = bend[0], ib = bend[1], ic = bend[2];
-        const kappa = (bend.length > 3) ? bend[3] : params.ktheta;
-        const a = beads[ia], bb = beads[ib], c = beads[ic];
-        const b1x = bb.x - a.x, b1y = bb.y - a.y, b1z = bb.z - a.z;
-        const b2x = c.x - bb.x, b2y = c.y - bb.y, b2z = c.z - bb.z;
+        const kappa = (bend.length > 3) ? bend[3] : ktDefault;
+        const a3 = ia * 3, b3 = ib * 3, c3 = ic * 3;
+        const b1x = pos[b3]   - pos[a3];
+        const b1y = pos[b3+1] - pos[a3+1];
+        const b1z = pos[b3+2] - pos[a3+2];
+        const b2x = pos[c3]   - pos[b3];
+        const b2y = pos[c3+1] - pos[b3+1];
+        const b2z = pos[c3+2] - pos[b3+2];
         const r1 = Math.hypot(b1x, b1y, b1z) + 1e-12;
         const r2 = Math.hypot(b2x, b2y, b2z) + 1e-12;
         const e1x = b1x / r1, e1y = b1y / r1, e1z = b1z / r1;
@@ -908,66 +994,55 @@
         const fCx =  inv2 * (e1x - cosT * e2x);
         const fCy =  inv2 * (e1y - cosT * e2y);
         const fCz =  inv2 * (e1z - cosT * e2z);
-        const fBx = -(fAx + fCx);
-        const fBy = -(fAy + fCy);
-        const fBz = -(fAz + fCz);
-
-        addForce(a,  fAx, fAy, fAz);
-        addForce(bb, fBx, fBy, fBz);
-        addForce(c,  fCx, fCy, fCz);
+        frc[a3]   += fAx;            frc[a3+1] += fAy;            frc[a3+2] += fAz;
+        frc[c3]   += fCx;            frc[c3+1] += fCy;            frc[c3+2] += fCz;
+        frc[b3]   -= (fAx + fCx);    frc[b3+1] -= (fAy + fCy);    frc[b3+2] -= (fAz + fCz);
         state.energy.bend += kappa * (1 - cosT);
       }
 
-      // ---- Crosslink springs (perpendicular projection only) + opt. ortho ----
-      // The spring acts on the component of the crosslink vector that is
-      // perpendicular to the local bundle tangent. This is the "inter-axis"
-      // distance the crosslinker really cares about, and leaves the
-      // axial-shear (parallel) component free — so bending the bundle does
-      // NOT cost crosslink energy artifactually.
-      // The optional kperp penalty acts on the parallel (axial) component
-      // only; per-ABP usePerp flag turns it off (e.g. α-actinin = floppy).
-      // Tangent is treated as constant for force calc (semi-explicit), which
-      // sacrifices exact energy conservation under finite damping but keeps
-      // the kernel cheap and stable.
+      // ---- Crosslink springs (perpendicular projection) + opt. ortho ----
       const kperp = (currentAbpEffective().usePerp === false) ? 0 : params.kperp;
       const kcl   = params.kcl;
       const Mmax  = params.monomers - 1;
+      const nMon  = params.monomers;
       for (const [ia, ib, rest] of state.crosslinks) {
-        const a = beads[ia], b = beads[ib];
-        const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        const a3 = ia * 3, b3 = ib * 3;
+        const dx = pos[b3]   - pos[a3];
+        const dy = pos[b3+1] - pos[a3+1];
+        const dz = pos[b3+2] - pos[a3+2];
 
-        // Local tangent: average of central differences from the two filaments
-        // at the connecting beads. Falls back to bond direction at ends.
-        const aF = a.f, aM = a.m, bF = b.f, bM = b.m;
-        const ap = beads[beadIndex(aF, aM > 0      ? aM - 1 : aM)];
-        const an = beads[beadIndex(aF, aM < Mmax   ? aM + 1 : aM)];
-        const bp = beads[beadIndex(bF, bM > 0      ? bM - 1 : bM)];
-        const bn = beads[beadIndex(bF, bM < Mmax   ? bM + 1 : bM)];
-        let tx = 0.5 * ((an.x - ap.x) + (bn.x - bp.x));
-        let ty = 0.5 * ((an.y - ap.y) + (bn.y - bp.y));
-        let tz = 0.5 * ((an.z - ap.z) + (bn.z - bp.z));
+        // Local tangent at each end: central difference along the filament.
+        // Indices come from f/m metadata; both ends are filament beads in the
+        // "single" model (this loop is only entered for that model).
+        const aF = beads[ia].f, aM = beads[ia].m;
+        const bF = beads[ib].f, bM = beads[ib].m;
+        const apI = (aM > 0      ? aF * nMon + (aM - 1) : ia);
+        const anI = (aM < Mmax   ? aF * nMon + (aM + 1) : ia);
+        const bpI = (bM > 0      ? bF * nMon + (bM - 1) : ib);
+        const bnI = (bM < Mmax   ? bF * nMon + (bM + 1) : ib);
+        const ap3 = apI * 3, an3 = anI * 3, bp3 = bpI * 3, bn3 = bnI * 3;
+        let tx = 0.5 * ((pos[an3]   - pos[ap3])   + (pos[bn3]   - pos[bp3]));
+        let ty = 0.5 * ((pos[an3+1] - pos[ap3+1]) + (pos[bn3+1] - pos[bp3+1]));
+        let tz = 0.5 * ((pos[an3+2] - pos[ap3+2]) + (pos[bn3+2] - pos[bp3+2]));
         const tn = Math.hypot(tx, ty, tz) + 1e-9;
         tx /= tn; ty /= tn; tz /= tn;
 
-        const s = dx * tx + dy * ty + dz * tz;            // parallel projection
-        const px = dx - s * tx;                           // perpendicular component
+        const s  = dx * tx + dy * ty + dz * tz;
+        const px = dx - s * tx;
         const py = dy - s * ty;
         const pz = dz - s * tz;
         const rho = Math.hypot(px, py, pz) + 1e-12;
         const stretch = rho - rest;
-
-        // Spring force lives in the perpendicular subspace.
         const fmag = kcl * stretch / rho;
         const fx = fmag * px, fy = fmag * py, fz = fmag * pz;
-        addForce(a,  fx,  fy,  fz);
-        addForce(b, -fx, -fy, -fz);
+        frc[a3]   += fx;  frc[a3+1] += fy;  frc[a3+2] += fz;
+        frc[b3]   -= fx;  frc[b3+1] -= fy;  frc[b3+2] -= fz;
         state.energy.crosslink += 0.5 * kcl * stretch * stretch;
 
-        // Optional axial penalty (parallel projection).
         if (kperp > 0) {
           const fpMag = kperp * s;
-          addForce(a,  fpMag * tx,  fpMag * ty,  fpMag * tz);
-          addForce(b, -fpMag * tx, -fpMag * ty, -fpMag * tz);
+          frc[a3]   += fpMag * tx;  frc[a3+1] += fpMag * ty;  frc[a3+2] += fpMag * tz;
+          frc[b3]   -= fpMag * tx;  frc[b3+1] -= fpMag * ty;  frc[b3+2] -= fpMag * tz;
           state.energy.orthogonal += 0.5 * kperp * s * s;
         }
       }
@@ -975,67 +1050,75 @@
       // ---- Cheap sterics between near-axial beads on neighbor filaments ----
       const cutoff  = params.sigma;
       const cutoff2 = cutoff * cutoff;
+      const repK    = params.rep;
       for (const [fi, fj] of state.neighborPairs) {
-        for (let m = 0; m < params.monomers; m++) {
+        const fiOff = fi * nMon, fjOff = fj * nMon;
+        for (let m = 0; m < nMon; m++) {
+          const aIdx = fiOff + m;
+          const a3 = aIdx * 3;
           for (let dm = -1; dm <= 1; dm++) {
             const n = m + dm;
-            if (n < 0 || n >= params.monomers) continue;
-            const a = beads[beadIndex(fi, m)];
-            const b = beads[beadIndex(fj, n)];
-            const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+            if (n < 0 || n >= nMon) continue;
+            const bIdx = fjOff + n;
+            const b3 = bIdx * 3;
+            const dx = pos[b3]   - pos[a3];
+            const dy = pos[b3+1] - pos[a3+1];
+            const dz = pos[b3+2] - pos[a3+2];
             const r2 = dx * dx + dy * dy + dz * dz + 1e-12;
             if (r2 >= cutoff2) continue;
             const r = Math.sqrt(r2);
             const overlap = cutoff - r;
-            const fmag = params.rep * overlap / r;
+            const fmag = repK * overlap / r;
             const fx = -fmag * dx, fy = -fmag * dy, fz = -fmag * dz;
-            addForce(a,  fx,  fy,  fz);
-            addForce(b, -fx, -fy, -fz);
-            state.energy.repulsion += 0.5 * params.rep * overlap * overlap;
+            frc[a3]   += fx;  frc[a3+1] += fy;  frc[a3+2] += fz;
+            frc[b3]   -= fx;  frc[b3+1] -= fy;  frc[b3+2] -= fz;
+            state.energy.repulsion += 0.5 * repK * overlap * overlap;
           }
         }
       }
 
       // ---- Pinning forces (3-point bend / clamps) ----
-      // Two-ended clamps via stiff per-bead pins; transverse load via a single
-      // ram spring on the COM of the centre cross-section. Force per centre
-      // bead is (1/N) of the COM-spring force, so the displacement bias acts
-      // as a body-level constraint without overwhelming the per-bead local
-      // mechanics. The reaction force we read is the COM-spring force.
       if (params.perturbMode === "bend3") {
         const kPin = 5000;
-        for (const p of state.beads) {
+        const N = beads.length;
+        for (let i = 0; i < N; i++) {
+          const p = beads[i];
           if (!p.pinned) continue;
-          const ex = p.x - p.x0, ey = p.y - p.y0, ez = p.z - p.z0;
-          addForce(p, -kPin * ex, -kPin * ey, -kPin * ez);
+          const i3 = i * 3;
+          const ex = pos[i3]   - p.x0;
+          const ey = pos[i3+1] - p.y0;
+          const ez = pos[i3+2] - p.z0;
+          frc[i3]   -= kPin * ex;
+          frc[i3+1] -= kPin * ey;
+          frc[i3+2] -= kPin * ez;
           state.energy.perturb += 0.5 * kPin * (ex * ex + ey * ey + ez * ez);
         }
 
         const ci = state.bend.centerBeads;
-        const N = ci.length;
-        if (N > 0) {
+        const Nc = ci.length;
+        if (Nc > 0) {
           let cx = 0, cy = 0, cz = 0;
-          for (let i = 0; i < N; i++) {
-            const p = beads[ci[i]];
-            cx += p.x; cy += p.y; cz += p.z;
+          for (let i = 0; i < Nc; i++) {
+            const i3 = ci[i] * 3;
+            cx += pos[i3]; cy += pos[i3+1]; cz += pos[i3+2];
           }
-          cx /= N; cy /= N; cz /= N;
+          cx /= Nc; cy /= Nc; cz /= Nc;
 
           const com0 = state.bend.com0;
-          const targetX = com0.x + params.def;
-          const ex = cx - targetX;
+          const ex = cx - (com0.x + params.def);
           const ey = cy - com0.y;
           const ez = cz - com0.z;
 
           const kRam = state.bend.kRam;
-          // U = ½ kRam |COM − target|² ⇒ ∂U/∂r_i = (kRam/N) (COM − target)
-          // Force on each centre bead is −(kRam/N)(COM − target).
-          const fxPB = -(kRam / N) * ex;
-          const fyPB = -(kRam / N) * ey;
-          const fzPB = -(kRam / N) * ez;
-          for (let i = 0; i < N; i++) addForce(beads[ci[i]], fxPB, fyPB, fzPB);
+          const fxPB = -(kRam / Nc) * ex;
+          const fyPB = -(kRam / Nc) * ey;
+          const fzPB = -(kRam / Nc) * ez;
+          for (let i = 0; i < Nc; i++) {
+            const i3 = ci[i] * 3;
+            frc[i3]   += fxPB;  frc[i3+1] += fyPB;  frc[i3+2] += fzPB;
+          }
 
-          state.perturb.ramForceX = -kRam * ex;   // ram→bundle force (+x is push)
+          state.perturb.ramForceX = -kRam * ex;
           state.perturb.actualDef = cx - com0.x;
           state.energy.perturb += 0.5 * kRam * (ex * ex + ey * ey + ez * ez);
         }
@@ -1046,12 +1129,14 @@
 
       // ---- Mouse grab spring ----
       if (state.grabbedBead >= 0) {
-        const p = state.beads[state.grabbedBead];
-        const ex = p.x - state.grabTarget.x;
-        const ey = p.y - state.grabTarget.y;
-        const ez = p.z - state.grabTarget.z;
-        const k = state.grabKspring;
-        addForce(p, -k * ex, -k * ey, -k * ez);
+        const i3 = state.grabbedBead * 3;
+        const ex = pos[i3]   - state.grabTarget.x;
+        const ey = pos[i3+1] - state.grabTarget.y;
+        const ez = pos[i3+2] - state.grabTarget.z;
+        const k  = state.grabKspring;
+        frc[i3]   -= k * ex;
+        frc[i3+1] -= k * ey;
+        frc[i3+2] -= k * ez;
         state.energy.grab += 0.5 * k * (ex * ex + ey * ey + ez * ez);
       }
     }
@@ -1063,33 +1148,42 @@
     function step() {
       computeForces();
       const dt = params.dt;
+      const drag = params.drag;
       const noiseScale = Math.sqrt(Math.max(0, params.temp) * dt) * 2.0;
+      const pos = state.pos, vel = state.vel, frc = state.frc;
+      const N3  = pos.length;
+      const vmax  = 50.0;
+      const vmax2 = vmax * vmax;
 
-      for (const p of state.beads) {
-        p.vx = params.drag * (p.vx + dt * p.fx) + noiseScale * randn();
-        p.vy = params.drag * (p.vy + dt * p.fy) + noiseScale * randn();
-        p.vz = params.drag * (p.vz + dt * p.fz) + noiseScale * randn();
-
-        const vmax = 50.0;
-        const v = Math.hypot(p.vx, p.vy, p.vz);
-        if (v > vmax) {
-          const s = vmax / v;
-          p.vx *= s; p.vy *= s; p.vz *= s;
+      for (let i = 0; i < N3; i += 3) {
+        let vx = drag * (vel[i]   + dt * frc[i])   + noiseScale * randn();
+        let vy = drag * (vel[i+1] + dt * frc[i+1]) + noiseScale * randn();
+        let vz = drag * (vel[i+2] + dt * frc[i+2]) + noiseScale * randn();
+        const v2 = vx*vx + vy*vy + vz*vz;
+        if (v2 > vmax2) {
+          const s = vmax / Math.sqrt(v2);
+          vx *= s; vy *= s; vz *= s;
         }
-
-        p.x += dt * p.vx;
-        p.y += dt * p.vy;
-        p.z += dt * p.vz;
+        vel[i]   = vx;  vel[i+1] = vy;  vel[i+2] = vz;
+        pos[i]   += dt * vx;
+        pos[i+1] += dt * vy;
+        pos[i+2] += dt * vz;
       }
+      syncTypedToBeads();   // refresh bead.x/.y/.z snapshot for UI
       state.frame++;
     }
 
     function kick() {
-      for (const p of state.beads) {
-        const taper = Math.sin(Math.PI * p.m / Math.max(1, params.monomers - 1));
-        p.vx += 8 * taper * randn();
-        p.vy += 8 * taper * randn();
-        p.vz += 1.5 * taper * randn();
+      const vel = state.vel;
+      const beads = state.beads;
+      const Nm = Math.max(1, params.monomers - 1);
+      for (let i = 0; i < beads.length; i++) {
+        const m = beads[i].m;
+        const taper = (m >= 0) ? Math.sin(Math.PI * m / Nm) : 0;
+        const i3 = i * 3;
+        vel[i3]   += 8   * taper * randn();
+        vel[i3+1] += 8   * taper * randn();
+        vel[i3+2] += 1.5 * taper * randn();
       }
     }
 
@@ -1118,19 +1212,22 @@
       FIRE.dt = 1e-3;
       FIRE.alpha = FIRE.alphaStart;
       FIRE.Npos = 0;
-      for (const p of state.beads) p.vx = p.vy = p.vz = 0;
+      state.vel.fill(0);
     }
 
     function fireStep() {
       computeForces();
+      const beads = state.beads;
+      const pos = state.pos, vel = state.vel, frc = state.frc;
+      const N = beads.length;
 
-      // P = F·v over moving beads.
       let P = 0, vNorm2 = 0, fNorm2 = 0;
-      for (const p of state.beads) {
-        if (p.pinned) continue;
-        P += p.fx * p.vx + p.fy * p.vy + p.fz * p.vz;
-        vNorm2 += p.vx * p.vx + p.vy * p.vy + p.vz * p.vz;
-        fNorm2 += p.fx * p.fx + p.fy * p.fy + p.fz * p.fz;
+      for (let i = 0; i < N; i++) {
+        if (beads[i].pinned) continue;
+        const i3 = i * 3;
+        P      += frc[i3] * vel[i3] + frc[i3+1] * vel[i3+1] + frc[i3+2] * vel[i3+2];
+        vNorm2 += vel[i3]*vel[i3] + vel[i3+1]*vel[i3+1] + vel[i3+2]*vel[i3+2];
+        fNorm2 += frc[i3]*frc[i3] + frc[i3+1]*frc[i3+1] + frc[i3+2]*frc[i3+2];
       }
       const vNorm = Math.sqrt(vNorm2);
       const fNorm = Math.sqrt(fNorm2) + 1e-12;
@@ -1138,11 +1235,13 @@
       if (P > 0) {
         const a = FIRE.alpha;
         const beta = a * vNorm / fNorm;
-        for (const p of state.beads) {
-          if (p.pinned) continue;
-          p.vx = (1 - a) * p.vx + beta * p.fx;
-          p.vy = (1 - a) * p.vy + beta * p.fy;
-          p.vz = (1 - a) * p.vz + beta * p.fz;
+        const oneMinusA = 1 - a;
+        for (let i = 0; i < N; i++) {
+          if (beads[i].pinned) continue;
+          const i3 = i * 3;
+          vel[i3]   = oneMinusA * vel[i3]   + beta * frc[i3];
+          vel[i3+1] = oneMinusA * vel[i3+1] + beta * frc[i3+1];
+          vel[i3+2] = oneMinusA * vel[i3+2] + beta * frc[i3+2];
         }
         if (FIRE.Npos > FIRE.Nmin) {
           FIRE.dt    = Math.min(FIRE.dt * FIRE.fInc, FIRE.dtMax);
@@ -1150,7 +1249,11 @@
         }
         FIRE.Npos++;
       } else {
-        for (const p of state.beads) { p.vx = 0; p.vy = 0; p.vz = 0; }
+        for (let i = 0; i < N; i++) {
+          if (beads[i].pinned) continue;
+          const i3 = i * 3;
+          vel[i3] = 0; vel[i3+1] = 0; vel[i3+2] = 0;
+        }
         FIRE.dt    = Math.max(FIRE.dt * FIRE.fDec, FIRE.dtMin);
         FIRE.alpha = FIRE.alphaStart;
         FIRE.Npos  = 0;
@@ -1158,40 +1261,52 @@
 
       // Velocity-Verlet (mass = 1, no damping).
       const dt = FIRE.dt;
-      for (const p of state.beads) {
-        if (p.pinned) continue;
-        p.vx += 0.5 * dt * p.fx;
-        p.vy += 0.5 * dt * p.fy;
-        p.vz += 0.5 * dt * p.fz;
-        p.x  += dt * p.vx;
-        p.y  += dt * p.vy;
-        p.z  += dt * p.vz;
+      const halfDt = 0.5 * dt;
+      for (let i = 0; i < N; i++) {
+        if (beads[i].pinned) continue;
+        const i3 = i * 3;
+        vel[i3]   += halfDt * frc[i3];
+        vel[i3+1] += halfDt * frc[i3+1];
+        vel[i3+2] += halfDt * frc[i3+2];
+        pos[i3]   += dt * vel[i3];
+        pos[i3+1] += dt * vel[i3+1];
+        pos[i3+2] += dt * vel[i3+2];
       }
       computeForces();
-      for (const p of state.beads) {
-        if (p.pinned) continue;
-        p.vx += 0.5 * dt * p.fx;
-        p.vy += 0.5 * dt * p.fy;
-        p.vz += 0.5 * dt * p.fz;
+      for (let i = 0; i < N; i++) {
+        if (beads[i].pinned) continue;
+        const i3 = i * 3;
+        vel[i3]   += halfDt * frc[i3];
+        vel[i3+1] += halfDt * frc[i3+1];
+        vel[i3+2] += halfDt * frc[i3+2];
       }
+      // Sync once per FIRE step (positions changed). UI/topology readers
+      // might not see this during a synchronous fireMinimize call, but they
+      // will see the final state once the loop returns.
     }
 
     function fireMinimize(maxIters = 800, fTol = 0.05) {
-      // Returns { converged, iters, fMax }.
       fireReset();
+      const frc = state.frc;
+      const beads = state.beads;
       for (let it = 0; it < maxIters; it++) {
         fireStep();
         if (it % 20 === 19) {
-          let fMax = 0;
-          for (const p of state.beads) {
-            if (p.pinned) continue;
-            const f2 = p.fx * p.fx + p.fy * p.fy + p.fz * p.fz;
-            if (f2 > fMax) fMax = f2;
+          let fMaxSq = 0;
+          for (let i = 0; i < beads.length; i++) {
+            if (beads[i].pinned) continue;
+            const i3 = i * 3;
+            const f2 = frc[i3]*frc[i3] + frc[i3+1]*frc[i3+1] + frc[i3+2]*frc[i3+2];
+            if (f2 > fMaxSq) fMaxSq = f2;
           }
-          fMax = Math.sqrt(fMax);
-          if (fMax < fTol) return { converged: true, iters: it, fMax };
+          const fMax = Math.sqrt(fMaxSq);
+          if (fMax < fTol) {
+            syncTypedToBeads();
+            return { converged: true, iters: it, fMax };
+          }
         }
       }
+      syncTypedToBeads();
       return { converged: false, iters: maxIters };
     }
 
@@ -1225,38 +1340,42 @@
       return { total, counts, avg, std, zero, hot, pairs: counts.length };
     }
 
-    function mcEnergy(score) {
+    function mcEnergy(score, skewPenalty) {
       // Negative compatibility (we want to maximize matches), with a soft
-      // penalty for too-skewed pair counts. Penalty weight is tuned so it
-      // gently discourages "all your eggs in one basket" registries.
-      const skewPenalty = 0.15;
+      // penalty for too-skewed pair counts to gently discourage "all eggs in
+      // one basket" registries (some pairs over-loaded, others empty).
       return -score.total + skewPenalty * score.std * score.pairs;
     }
 
-    function runMonteCarlo(opts = {}) {
-      const iters = opts.iters || 4000;
-      const T0 = opts.T0 || 8;
-      const T1 = opts.T1 || 0.05;
-      const N = state.filaments.length;
+    async function runMonteCarlo(opts = {}) {
+      const iters        = Math.round(opts.iters ?? params.mcIters ?? 4000);
+      const T0           = opts.T0    ?? params.mcT0    ?? 8;
+      const T1           = opts.T1    ?? params.mcT1    ?? 0.05;
+      const skewPenalty  = opts.skew  ?? params.mcSkew  ?? 0.15;
+      const N            = state.filaments.length;
+      const yieldEvery   = 1000;     // yield to event loop every N iters
+      const logEvery     = Math.max(1, Math.floor(iters / 8));
 
       let cur = scoreRegistries();
-      let curE = mcEnergy(cur);
+      let curE = mcEnergy(cur, skewPenalty);
       let best = { ...cur };
       const bestS = state.filaments.map(f => f.s);
+      const t0wall = performance.now();
+      let accepts = 0;
+
+      console.log(`MC start: iters=${iters}  T₀=${T0}  T₁=${T1}  skew=${skewPenalty.toFixed(2)}  init score=${cur.total} (${cur.zero} empty pairs)`);
 
       for (let it = 0; it < iters; it++) {
         const T = T0 * Math.pow(T1 / T0, it / iters);
         const move = Math.random();
         let undo;
         if (move < 0.7) {
-          // Rotate one filament's registry by a random non-zero amount.
           const i = Math.floor(Math.random() * N);
           const oldS = state.filaments[i].s;
           const ds = 1 + Math.floor(Math.random() * (PHASE_LEN - 1));
           state.filaments[i].s = (oldS + ds) % PHASE_LEN;
           undo = () => { state.filaments[i].s = oldS; };
         } else {
-          // Swap two filaments' registries.
           const i = Math.floor(Math.random() * N);
           let j = Math.floor(Math.random() * N);
           if (j === i) j = (j + 1) % N;
@@ -1265,28 +1384,38 @@
           undo = () => { state.filaments[i].s = a; state.filaments[j].s = b; };
         }
         const trial = scoreRegistries();
-        const trialE = mcEnergy(trial);
+        const trialE = mcEnergy(trial, skewPenalty);
         const dE = trialE - curE;
         if (dE <= 0 || Math.random() < Math.exp(-dE / T)) {
           curE = trialE;
           cur = trial;
-          if (cur.total > best.total) {
+          accepts++;
+          if (cur.total > best.total ||
+              (cur.total === best.total && cur.std < best.std)) {
             best = { ...cur };
             for (let k = 0; k < N; k++) bestS[k] = state.filaments[k].s;
           }
         } else {
           undo();
         }
+        if ((it + 1) % logEvery === 0) {
+          console.log(`  it ${it+1}/${iters}  T=${T.toFixed(3)}  cur=${cur.total} (zero=${cur.zero})  best=${best.total} (zero=${best.zero})  acc=${(accepts/(it+1)*100).toFixed(1)}%`);
+        }
+        if ((it + 1) % yieldEvery === 0) {
+          // Yield to the event loop so the UI thread can repaint.
+          await new Promise(r => setTimeout(r, 0));
+        }
       }
 
-      // Restore best.
+      // Restore best registries.
       for (let k = 0; k < N; k++) state.filaments[k].s = bestS[k];
 
-      // Switch the dropdown to "custom" so subsequent rebuilds keep the result.
       selects.registryMode.value = "custom";
       params.registryMode = "custom";
       buildCrosslinks();
 
+      const ms = performance.now() - t0wall;
+      console.log(`MC done in ${ms.toFixed(0)} ms — best score ${best.total}, empty pairs ${best.zero}/${best.pairs}, accept rate ${(accepts/iters*100).toFixed(1)}%`);
       return best;
     }
 
@@ -1651,16 +1780,10 @@ void main() {
     }
 
     function uploadGLPositions() {
-      const N = state.beads.length;
-      const arr = GL.positions;
-      for (let i = 0; i < N; i++) {
-        const p = state.beads[i];
-        arr[i * 3]     = p.x;
-        arr[i * 3 + 1] = p.y;
-        arr[i * 3 + 2] = p.z;
-      }
+      // Upload state.pos directly — it's already a Float32Array of the right
+      // layout, and avoids the per-bead property access of the old loop.
       gl.bindBuffer(gl.ARRAY_BUFFER, GL.posBuf);
-      gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, state.pos, gl.DYNAMIC_DRAW);
     }
 
     function computeMVP() {
@@ -2054,12 +2177,25 @@ void main() {
     });
 
     document.getElementById("rebuildBtn").addEventListener("click", () => buildCrosslinks());
-    document.getElementById("mcBtn").addEventListener("click", () => {
-      const before = scoreRegistries();
-      const after  = runMonteCarlo();
-      GL.beadColorsDirty = true;
-      GL.bondColorsDirty = true;
-      console.log(`MC: ${before.total} → ${after.total} compatible sites`);
+    let mcRunning = false;
+    document.getElementById("mcBtn").addEventListener("click", async () => {
+      if (mcRunning) { console.warn("MC already running."); return; }
+      const btn = document.getElementById("mcBtn");
+      const beforeText = btn.textContent;
+      mcRunning = true;
+      btn.disabled = true;
+      btn.textContent = "Optimizing…";
+      try {
+        const before = scoreRegistries();
+        const after  = await runMonteCarlo();
+        GL.beadColorsDirty = true;
+        GL.bondColorsDirty = true;
+        console.log(`MC: ${before.total} → ${after.total} compatible sites`);
+      } finally {
+        mcRunning = false;
+        btn.disabled = false;
+        btn.textContent = beforeText;
+      }
     });
 
     document.getElementById("pauseBtn").addEventListener("click", () => {
@@ -2182,6 +2318,7 @@ void main() {
 
     // Set ktheta default to the actin-derived value once b is read.
     {
+      readStructuralParams();   // need params.b before computing actinKtheta
       readParams();
       controls.ktheta.value = actinKtheta(params.b).toFixed(0);
     }
@@ -2191,8 +2328,7 @@ void main() {
 
     initWebGL();   // no-op if gl is null
     resize();
-    readParams();
-    resetSystem(false);
+    resetSystem(false);   // calls readStructuralParams + readParams internally
     animate();
   </script>
 </body>
