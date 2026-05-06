@@ -1,8 +1,7 @@
 import type { BeadMeta, Params, ProjectedPoint, Renderer, SimulationState, Vec3 } from "../model/types";
-import { FACE_COLORS, PHASE_LEN } from "../model/constants";
-import { exposedK, wrapDeg360 } from "../model/hex";
+import { displayedFaceK } from "../model/hex";
 import { defaultView } from "../simulation/state";
-import { clamp } from "./color";
+import { clamp, faceCssColor, registryCssColor, registryHue } from "./color";
 
 type DrawObject =
   | { type: "crosslink"; z: number; a: ProjectedPoint; b: ProjectedPoint }
@@ -168,16 +167,12 @@ export class CanvasRenderer implements Renderer {
     if (p.isInternal) return "rgba(242, 204, 96, 0.92)";
     const f = this.state.filaments[p.f];
     if (this.state.display.showFaces) {
-      const k = exposedK(p.m, f.s);
+      const k = displayedFaceK(p.m, f, this.params);
       if (k === null) return "rgba(120, 130, 142, 0.55)";
-      return FACE_COLORS[k];
+      return faceCssColor(k);
     }
     if (this.state.display.showRegistry) {
-      const hue =
-        this.params.helicityMode === "continuous"
-          ? wrapDeg360(f.phaseDeg)
-          : (f.s / PHASE_LEN) * 360;
-      return `hsl(${hue.toFixed(0)}, 70%, 65%)`;
+      return registryCssColor(f, this.params.helicityMode);
     }
     return "rgba(201, 215, 231, 0.85)";
   }
@@ -185,7 +180,8 @@ export class CanvasRenderer implements Renderer {
   private bondColor(p: BeadMeta): string {
     if (p.isInternal) return "rgba(242, 204, 96, 0.65)";
     if (this.state.display.showRegistry) {
-      const hue = (p.f / Math.max(1, this.state.filaments.length)) * 360;
+      const filament = this.state.filaments[p.f];
+      const hue = registryHue(filament, this.params.helicityMode);
       return `hsla(${hue.toFixed(0)}, 50%, 60%, 0.55)`;
     }
     return "rgba(88, 166, 255, 0.55)";

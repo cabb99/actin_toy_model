@@ -32,7 +32,12 @@ test("controls update labels and display toggles stay stable", async ({ page }) 
 
   await page.locator("#faceToggle").click();
   await expect(page.locator("#faceToggle")).toHaveClass(/on/);
-  await expect(page.locator("#legend")).toContainText("Exposed face");
+  await expect(page.locator("#legend")).toContainText("Angle color");
+  await expect(page.locator("#legend")).toContainText("Directions");
+
+  await page.locator("#registryToggle").click();
+  await expect(page.locator("#registryToggle")).toHaveClass(/on/);
+  await expect(page.locator("#legend")).toContainText("Registry color follows");
 
   await page.locator("#bendKAngleLog10").evaluate((el) => {
     const input = el as HTMLInputElement;

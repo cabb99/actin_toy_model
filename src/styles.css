@@ -196,6 +196,7 @@ button.toggle.on {
   color: var(--muted);
   pointer-events: none;
   line-height: 1.6;
+  max-width: min(290px, calc(100vw - 48px));
 }
 
 .legend .swatch {
@@ -205,6 +206,42 @@ button.toggle.on {
   border-radius: 50%;
   margin-right: 6px;
   vertical-align: middle;
+}
+
+.legend .angle-ramp {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  margin: 6px 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.legend .angle-labels {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.legend .angle-labels span:nth-child(2),
+.legend .angle-labels span:nth-child(3) {
+  text-align: center;
+}
+
+.legend .angle-labels span:last-child {
+  text-align: right;
+}
+
+.legend .legend-section {
+  margin-top: 2px;
+}
+
+.legend .legend-note {
+  margin-top: 6px;
+  color: #c9d7e7;
+  line-height: 1.45;
 }
 
 .equation {
@@ -247,6 +284,11 @@ button.toggle.on {
     min-width: 180px;
     right: 10px;
     top: 10px;
+  }
+  .legend {
+    left: 10px;
+    top: 10px;
+    max-width: min(250px, calc(100vw - 32px));
   }
   .hint {
     left: 10px;

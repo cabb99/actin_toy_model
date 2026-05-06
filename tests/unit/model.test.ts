@@ -5,10 +5,27 @@ import {
   axialToXY,
   clampAngleThresholdDeg,
   defaultRegistry,
+  displayedFaceK,
   exposedK,
+  nearestHexDirectionK,
   withinAngleThresholdDeg,
   wrapDeg360,
 } from "../../src/model/hex";
+import { faceCssColor, registryCssColor, registryHue } from "../../src/render/color";
+import { beadCssColor } from "../../src/ui/readout";
+import { createSimulationState } from "../../src/simulation/state";
+
+const continuousParams = {
+  helicityMode: "continuous" as const,
+  actinTwistDeg: 166.15,
+  helicityHandedness: 1 as const,
+  helicityPhaseOffsetDeg: 0,
+};
+
+const discreteParams = {
+  ...continuousParams,
+  helicityMode: "discrete12" as const,
+};
 
 describe("hex and phase model", () => {
   it("maps axial directions to the expected hex orientation", () => {
@@ -53,5 +70,49 @@ describe("hex and phase model", () => {
     expect(clampAngleThresholdDeg(999)).toBe(180);
     expect(withinAngleThresholdDeg(10, 10)).toBe(true);
     expect(withinAngleThresholdDeg(10.001, 10)).toBe(false);
+  });
+
+  it("maps discrete registries to evenly spaced hues", () => {
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 0 }, "discrete12")).toBe(0);
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 3, phaseDeg: 0 }, "discrete12")).toBe(90);
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: PHASE_LEN - 1, phaseDeg: 0 }, "discrete12")).toBe(
+      330,
+    );
+  });
+
+  it("wraps continuous phase angles onto the hue wheel", () => {
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 361 }, "continuous")).toBe(1);
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: -30 }, "continuous")).toBe(330);
+    expect(registryCssColor({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 359.6 }, "continuous")).toBe(
+      "hsl(360, 70%, 65%)",
+    );
+  });
+
+  it("keeps readout bead colors aligned with the shared registry color helper", () => {
+    const state = createSimulationState();
+    state.display.showRegistry = true;
+    state.filaments = [{ id: 0, q: 0, r: 0, x: 0, y: 0, s: 4, phaseDeg: 123 }];
+
+    expect(beadCssColor(state, discreteParams, { f: 0, m: 0 })).toBe(registryCssColor(state.filaments[0], "discrete12"));
+    expect(beadCssColor(state, continuousParams, { f: 0, m: 0 })).toBe(registryCssColor(state.filaments[0], "continuous"));
+  });
+
+  it("maps displayed continuous faces to the nearest hex direction", () => {
+    expect(nearestHexDirectionK(29.9)).toBe(0);
+    expect(nearestHexDirectionK(30.1)).toBe(1);
+    expect(nearestHexDirectionK(359)).toBe(0);
+
+    const filament = { id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 61 };
+    expect(displayedFaceK(0, filament, continuousParams)).toBe(1);
+  });
+
+  it("keeps face colors on the same angular palette as the shared face helper", () => {
+    const state = createSimulationState();
+    state.display.showFaces = true;
+    state.filaments = [{ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 61 }];
+
+    const faceIndex = displayedFaceK(0, state.filaments[0], continuousParams);
+    expect(faceIndex).toBe(1);
+    expect(beadCssColor(state, continuousParams, { f: 0, m: 0 })).toBe(faceCssColor(faceIndex ?? 0));
   });
 });

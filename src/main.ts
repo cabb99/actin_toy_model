@@ -58,7 +58,7 @@ function animate(): void {
     computeForces(state, params);
   }
   renderer.draw();
-  renderLegend(refs.legend, state);
+  renderLegend(refs.legend, state, params);
   renderReadout(refs.readout, state, params);
   requestAnimationFrame(animate);
 }

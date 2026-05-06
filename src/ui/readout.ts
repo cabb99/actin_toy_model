@@ -1,22 +1,37 @@
 import { currentAbpEffective } from "../model/abp";
-import { FACE_COLORS, KBT_PN_NM } from "../model/constants";
-import { exposedK } from "../model/hex";
+import { KBT_PN_NM } from "../model/constants";
+import { displayedFaceK } from "../model/hex";
 import type { Params, SimulationState, SweepSample } from "../model/types";
+import { angleCssColor, angleLegendStops, faceCssColor, registryCssColor } from "../render/color";
 import { scoreRegistries } from "../simulation/registry";
 
-export function renderLegend(legend: HTMLElement, state: SimulationState): void {
-  if (!state.display.showFaces) {
+export function renderLegend(legend: HTMLElement, state: SimulationState, params: Params): void {
+  if (!state.display.showFaces && !state.display.showRegistry) {
     legend.innerHTML = "";
     legend.style.display = "none";
     return;
   }
   legend.style.display = "block";
-  const labels = ["0°", "60°", "120°", "180°", "240°", "300°"];
-  let html = "<strong>Exposed face</strong><br>";
-  for (let k = 0; k < 6; k++) {
-    html += `<span class="swatch" style="background:${FACE_COLORS[k]}"></span>${labels[k]}<br>`;
-  }
-  html += `<span class="swatch" style="background:rgba(120,130,142,0.7)"></span>inactive`;
+  const labels = angleLegendStops()
+    .map(({ angleDeg, color }) => `<span class="swatch" style="background:${color}"></span>${angleDeg.toFixed(0)}°`)
+    .join("<br>");
+  const rampStops = [0, 60, 120, 180, 240, 300, 360]
+    .map((angleDeg) => `${angleCssColor(angleDeg)} ${(angleDeg / 360) * 100}%`)
+    .join(", ");
+  const faceCopy =
+    params.helicityMode === "continuous"
+      ? "Faces snap each monomer to the nearest 60° face direction."
+      : "Faces use the active 12-state face schedule.";
+  const registryCopy =
+    params.helicityMode === "continuous"
+      ? "Registry color follows the continuous phase angle."
+      : "Registry color follows the 12-state phase angle.";
+  let html = "<strong>Angle color</strong><br>";
+  html += `<div class="angle-ramp" style="background:linear-gradient(90deg, ${rampStops})"></div>`;
+  html += '<div class="angle-labels"><span>0°</span><span>120°</span><span>240°</span><span>360°</span></div>';
+  html += `<div class="legend-section"><strong>Directions</strong><br>${labels}</div>`;
+  if (state.display.showRegistry) html += `<div class="legend-note">${registryCopy}</div>`;
+  if (state.display.showFaces) html += `<div class="legend-note">${faceCopy}</div>`;
   legend.innerHTML = html;
 }
 
@@ -122,16 +137,22 @@ export function renderSweepTable(
   `;
 }
 
-export function beadCssColor(state: SimulationState, p: { isInternal?: boolean; f: number; m: number }): string {
+export function beadCssColor(
+  state: SimulationState,
+  params: Pick<
+    Params,
+    "helicityMode" | "actinTwistDeg" | "helicityHandedness" | "helicityPhaseOffsetDeg"
+  >,
+  p: { isInternal?: boolean; f: number; m: number },
+): string {
   if (p.isInternal) return "rgba(242, 204, 96, 0.92)";
   const f = state.filaments[p.f];
   if (state.display.showFaces) {
-    const k = exposedK(p.m, f.s);
-    return k === null ? "rgba(120, 130, 142, 0.55)" : FACE_COLORS[k];
+    const k = displayedFaceK(p.m, f, params);
+    return k === null ? "rgba(120, 130, 142, 0.55)" : faceCssColor(k);
   }
   if (state.display.showRegistry) {
-    const hue = (f.s / 12) * 360;
-    return `hsl(${hue.toFixed(0)}, 70%, 65%)`;
+    return registryCssColor(f, params.helicityMode);
   }
   return "rgba(201, 215, 231, 0.85)";
 }

@@ -1,5 +1,5 @@
 import { PHASE_LEN, PHASE_TO_K } from "./constants";
-import type { Params, Vec2 } from "./types";
+import type { Filament, Params, Vec2 } from "./types";
 
 export function axialToXY(q: number, r: number, a: number): Vec2 {
   return {
@@ -38,12 +38,42 @@ export function hexDirectionDeg(k: number): number {
   return wrapDeg360(k * 60);
 }
 
+export function nearestHexDirectionK(angleDeg: number): number {
+  return Math.round(wrapDeg360(angleDeg) / 60) % 6;
+}
+
 export function monomerExposedAngleDeg(m: number, phaseDeg: number, params: Pick<
   Params,
   "actinTwistDeg" | "helicityHandedness" | "helicityPhaseOffsetDeg"
 >): number {
   const phaseFromMonomer = params.helicityHandedness * params.actinTwistDeg * m;
   return wrapDeg360(params.helicityPhaseOffsetDeg + phaseDeg + phaseFromMonomer);
+}
+
+export function displayedFaceK(
+  m: number,
+  filament: Filament,
+  params: Pick<
+    Params,
+    "helicityMode" | "actinTwistDeg" | "helicityHandedness" | "helicityPhaseOffsetDeg"
+  >,
+): number | null {
+  if (params.helicityMode === "continuous") {
+    return nearestHexDirectionK(monomerExposedAngleDeg(m, filament.phaseDeg, params));
+  }
+  return exposedK(m, filament.s);
+}
+
+export function displayedFaceAngleDeg(
+  m: number,
+  filament: Filament,
+  params: Pick<
+    Params,
+    "helicityMode" | "actinTwistDeg" | "helicityHandedness" | "helicityPhaseOffsetDeg"
+  >,
+): number | null {
+  const faceIndex = displayedFaceK(m, filament, params);
+  return faceIndex === null ? null : hexDirectionDeg(faceIndex);
 }
 
 export function softAngularScore(
