@@ -2,6 +2,7 @@ export type RegistryMode = "perfect" | "zero" | "random" | "custom";
 export type AbpType = "fascin" | "actinin" | "camkii" | "custom";
 export type PerturbMode = "none" | "bend3";
 export type AbpModel = "single" | "linker2" | "linker4";
+export type HelicityMode = "discrete12" | "continuous";
 
 export interface Params {
   rings: number;
@@ -28,6 +29,13 @@ export interface Params {
   mcSkew: number;
   sigma: number;
   drag: number;
+  helicityMode: HelicityMode;
+  actinTwistDeg: number;
+  helicityHandedness: 1 | -1;
+  helicityPhaseOffsetDeg: number;
+  helicityAngleThresholdDeg: number;
+  compatibilitySharpness: number;
+  mcPhaseSigma0: number;
   registryMode: RegistryMode;
   abpType: AbpType;
   perturbMode: PerturbMode;
@@ -63,6 +71,7 @@ export interface Filament {
   x: number;
   y: number;
   s: number;
+  phaseDeg: number;
 }
 
 export interface BeadMeta {
@@ -147,6 +156,10 @@ export interface SimulationState {
   };
   view: ViewState;
   display: DisplayState;
+  helicity: {
+    compatibleSites: number;
+    incompatibleSites: number;
+  };
   nFilamentBeads: number;
   nBackboneBonds: number;
   nBackboneBends: number;
@@ -187,6 +200,7 @@ export interface RegistryScore {
   zero: number;
   hot: number;
   pairs: number;
+  count: number;
 }
 
 export interface Rng {

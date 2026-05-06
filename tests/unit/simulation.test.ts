@@ -3,12 +3,13 @@ import { defaultParams } from "../../src/model/constants";
 import type { Params, SimulationState } from "../../src/model/types";
 import { computeForces } from "../../src/simulation/forces";
 import { createSeededRng } from "../../src/simulation/random";
-import { scoreRegistries } from "../../src/simulation/registry";
+import { runMonteCarlo, scoreRegistries } from "../../src/simulation/registry";
 import { createSimulationState } from "../../src/simulation/state";
 import {
   angleDegAtB,
   applyPerturbationConstraints,
   buildCrosslinks,
+  compatibilityScore,
   compatibleAt,
   resetSystem,
   syncBeadsToTyped,
@@ -104,6 +105,144 @@ describe("topology", () => {
     applyPerturbationConstraints(state, params);
     const angle = angleDegAtB(state.bend.leftCom0, state.bend.centerCom0, state.bend.rightCom0);
     expect(angle).toBeCloseTo(180, 4);
+  });
+
+  it("uses inclusive angular threshold boundaries in continuous mode (hard score)", () => {
+    const params = smallParams({
+      helicityMode: "continuous",
+      helicityPhaseOffsetDeg: 1,
+      helicityAngleThresholdDeg: 0,
+      compatibilitySharpness: 0,
+    });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(8), false);
+    state.neighborPairs = [[0, 1, 0]];
+    state.filaments[0].phaseDeg = 0;
+    state.filaments[1].phaseDeg = 180;
+
+    expect(compatibleAt(state, params, 0, 1, 0, 0)).toBe(false);
+    params.helicityAngleThresholdDeg = 1;
+    expect(compatibleAt(state, params, 0, 1, 0, 0)).toBe(true);
+  });
+
+  it("increasing threshold cannot reduce compatibility in continuous mode", () => {
+    const state = createSimulationState();
+    const strict = smallParams({
+      helicityMode: "continuous",
+      helicityPhaseOffsetDeg: 10,
+      helicityAngleThresholdDeg: 5,
+      compatibilitySharpness: 0,
+    });
+    const loose = { ...strict, helicityAngleThresholdDeg: 15 };
+    resetSystem(state, strict, createSeededRng(9), false);
+    state.neighborPairs = [[0, 1, 0]];
+    state.filaments[0].phaseDeg = 0;
+    state.filaments[1].phaseDeg = 180;
+
+    const strictCompatible = compatibleAt(state, strict, 0, 1, 0, 0);
+    const looseCompatible = compatibleAt(state, loose, 0, 1, 0, 0);
+    expect(Number(looseCompatible)).toBeGreaterThanOrEqual(Number(strictCompatible));
+  });
+
+  it("soft score peaks at perfect alignment and falls to zero at the threshold", () => {
+    const params = smallParams({
+      helicityMode: "continuous",
+      helicityPhaseOffsetDeg: 0,
+      helicityAngleThresholdDeg: 30,
+      compatibilitySharpness: 1,
+    });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(10), false);
+    state.neighborPairs = [[0, 1, 0]];
+    state.filaments[0].phaseDeg = 0;
+    state.filaments[1].phaseDeg = 180;
+
+    const peak = compatibilityScore(state, params, 0, 1, 0, 0);
+    expect(peak).toBeCloseTo(1, 6);
+
+    state.filaments[0].phaseDeg = 30;
+    const edge = compatibilityScore(state, params, 0, 1, 0, 0);
+    expect(edge).toBeCloseTo(0, 6);
+
+    state.filaments[0].phaseDeg = 15;
+    const half = compatibilityScore(state, params, 0, 1, 0, 0);
+    expect(half).toBeGreaterThan(0);
+    expect(half).toBeLessThan(1);
+  });
+
+  it("never builds two crosslinks on the same monomer when threshold is wide", () => {
+    const params = smallParams({
+      monomers: 12,
+      helicityMode: "continuous",
+      helicityAngleThresholdDeg: 90,
+      compatibilitySharpness: 0,
+      sat: 1,
+      abpType: "fascin",
+      actinTwistDeg: 0,
+    });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(11), false);
+    // Central filament at (0,0) plus 6 ring neighbors. Centre exposes 0°,
+    // ring exposes 180°. Twist set to 0 so every monomer is identical, and the
+    // 90° threshold lets the centre match k=0 AND k=1 simultaneously — exactly
+    // the conflict the resolver must reject.
+    for (const f of state.filaments) {
+      f.phaseDeg = f.q === 0 && f.r === 0 ? 0 : 180;
+    }
+    buildCrosslinks(state, params, createSeededRng(12));
+
+    const beadUseCount = new Map<number, number>();
+    for (const [ia, ib] of state.crosslinks) {
+      beadUseCount.set(ia, (beadUseCount.get(ia) ?? 0) + 1);
+      beadUseCount.set(ib, (beadUseCount.get(ib) ?? 0) + 1);
+    }
+    expect(state.crosslinks.length).toBeGreaterThan(0);
+    for (const n of beadUseCount.values()) expect(n).toBe(1);
+  });
+
+  it("preserves toy-model bead geometry under continuous helicity mode", () => {
+    const params = smallParams({ helicityMode: "continuous" });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(13), false);
+    const f0 = state.filaments[0];
+    for (let m = 0; m < params.monomers; m++) {
+      const idx = f0.id * params.monomers + m;
+      const bead = state.beads[idx];
+      expect(bead.x0).toBeCloseTo(f0.x, 9);
+      expect(bead.y0).toBeCloseTo(f0.y, 9);
+    }
+    for (const bond of state.bonds) {
+      expect(bond[2]).toBeCloseTo(params.b, 9);
+    }
+  });
+});
+
+describe("registry MC", () => {
+  it("mutates filament phaseDeg in continuous mode and leaves discrete s alone", async () => {
+    const params: Params = {
+      ...defaultParams(),
+      rings: 1,
+      monomers: 24,
+      helicityMode: "continuous",
+      registryMode: "zero",
+      mcIters: 200,
+      mcT0: 4,
+      mcT1: 0.05,
+      mcSkew: 0,
+      mcPhaseSigma0: 30,
+      sat: 1,
+    };
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(20), false);
+    const beforePhases = state.filaments.map((f) => f.phaseDeg);
+    const beforeS = state.filaments.map((f) => f.s);
+    await runMonteCarlo(state, params, createSeededRng(21), { iters: 200 });
+
+    const afterPhases = state.filaments.map((f) => f.phaseDeg);
+    const afterS = state.filaments.map((f) => f.s);
+    const phasesChanged = afterPhases.some((p, i) => Math.abs(p - beforePhases[i]) > 1e-9);
+    expect(phasesChanged).toBe(true);
+    expect(afterS).toEqual(beforeS);
   });
 });
 

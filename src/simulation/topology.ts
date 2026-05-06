@@ -1,6 +1,14 @@
 import { HEX_DIRS, PHASE_LEN } from "../model/constants";
 import { currentAbpEffective } from "../model/abp";
-import { axialToXY, defaultRegistry, exposedK } from "../model/hex";
+import {
+  angularDistanceDeg,
+  axialToXY,
+  defaultRegistry,
+  exposedK,
+  hexDirectionDeg,
+  monomerExposedAngleDeg,
+  softAngularScore,
+} from "../model/hex";
 import type { BeadMeta, Params, Rng, SimulationState, Vec3 } from "../model/types";
 import { randomRegistry } from "./random";
 
@@ -19,7 +27,7 @@ export function buildFilaments(state: SimulationState, params: Params, rng: Rng)
       const s = -q - r;
       if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) <= R) {
         const xy = axialToXY(q, r, params.a);
-        state.filaments.push({ id, q, r, x: xy.x, y: xy.y, s: 0 });
+        state.filaments.push({ id, q, r, x: xy.x, y: xy.y, s: 0, phaseDeg: 0 });
         byKey.set(`${q},${r}`, id);
         id++;
       }
@@ -39,35 +47,65 @@ export function buildFilaments(state: SimulationState, params: Params, rng: Rng)
 }
 
 export function assignRegistries(state: SimulationState, params: Params, rng: Rng): void {
+  const phaseStep = 360 / PHASE_LEN;
   for (const f of state.filaments) {
     switch (params.registryMode) {
       case "zero":
         f.s = 0;
+        f.phaseDeg = 0;
         break;
       case "random":
         f.s = randomRegistry(rng);
+        f.phaseDeg = rng.random() * 360;
         break;
       case "custom":
         break;
       case "perfect":
       default:
         f.s = defaultRegistry(f.q, f.r, 0);
+        f.phaseDeg = phaseStep * f.s;
     }
   }
 }
 
+export function compatibilityScore(
+  state: SimulationState,
+  params: Params,
+  fi: number,
+  fj: number,
+  k: number,
+  m: number,
+): number {
+  const fi0 = state.filaments[fi];
+  const fj0 = state.filaments[fj];
+  if (!fi0 || !fj0) return 0;
+  const oppK = (k + 3) % 6;
+
+  if (params.helicityMode !== "continuous") {
+    return exposedK(m, fi0.s) === k && exposedK(m, fj0.s) === oppK ? 1 : 0;
+  }
+
+  const iAngle = monomerExposedAngleDeg(m, fi0.phaseDeg, params);
+  const jAngle = monomerExposedAngleDeg(m, fj0.phaseDeg, params);
+  const iMismatch = angularDistanceDeg(iAngle, hexDirectionDeg(k));
+  const jMismatch = angularDistanceDeg(jAngle, hexDirectionDeg(oppK));
+  const threshold = params.helicityAngleThresholdDeg;
+  const sharp = params.compatibilitySharpness;
+  const si = softAngularScore(iMismatch, threshold, sharp);
+  if (si <= 0) return 0;
+  const sj = softAngularScore(jMismatch, threshold, sharp);
+  return si * sj;
+}
+
 export function compatibleAt(
   state: SimulationState,
-  _params: Params,
+  params: Params,
   fi: number,
   fj: number,
   k: number,
   m: number,
 ): boolean {
-  const si = state.filaments[fi]?.s ?? 0;
-  const sj = state.filaments[fj]?.s ?? 0;
-  const oppK = (k + 3) % 6;
-  return exposedK(m, si) === k && exposedK(m, sj) === oppK;
+  return compatibilityScore(state, params, fi, fj, k, m) > 0;
 }
 
 export function syncBeadsToTyped(state: SimulationState): void {
@@ -119,58 +157,83 @@ export function addInternalBead(state: SimulationState, x: number, y: number, z:
   return idx;
 }
 
+interface CrosslinkCandidate {
+  fi: number;
+  fj: number;
+  k: number;
+  m: number;
+  score: number;
+}
+
 export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng): void {
   state.beads.length = state.nFilamentBeads;
   state.bonds.length = state.nBackboneBonds;
   state.bends.length = state.nBackboneBends;
   state.crosslinks = [];
+  state.helicity.compatibleSites = 0;
+  state.helicity.incompatibleSites = 0;
   const counts = new Map<string, number>();
+  for (const [fi, fj] of state.neighborPairs) counts.set(`${fi}-${fj}`, 0);
 
   const abp = currentAbpEffective(params);
   const restLen = abp.length;
 
+  // Greedy-claim by score keeps each (filament, monomer) bead in at most one
+  // crosslink — required when threshold > 30° lets a monomer match multiple
+  // hex directions.
+  const candidates: CrosslinkCandidate[] = [];
   for (const [fi, fj, k] of state.neighborPairs) {
-    let nLinks = 0;
     for (let m = 0; m < params.monomers; m++) {
-      if (!compatibleAt(state, params, fi, fj, k, m)) continue;
+      const score = compatibilityScore(state, params, fi, fj, k, m);
+      if (score > 0) state.helicity.compatibleSites++;
+      else state.helicity.incompatibleSites++;
+      if (score <= 0) continue;
       if (rng.random() > params.sat) continue;
-
-      const ia = beadIndex(params, fi, m);
-      const ib = beadIndex(params, fj, m);
-
-      if (abp.model === "single") {
-        state.crosslinks.push([ia, ib, restLen]);
-      } else if (abp.model === "linker2") {
-        const a = state.beads[ia];
-        const b = state.beads[ib];
-        const iInt = addInternalBead(
-          state,
-          0.5 * (a.x + b.x),
-          0.5 * (a.y + b.y),
-          0.5 * (a.z + b.z),
-        );
-        const segLen = restLen * 0.5;
-        state.bonds.push([ia, iInt, segLen, abp.kInternal]);
-        state.bonds.push([iInt, ib, segLen, abp.kInternal]);
-        state.bends.push([ia, iInt, ib, abp.kBendInternal]);
-      } else {
-        const a = state.beads[ia];
-        const b = state.beads[ib];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const dz = b.z - a.z;
-        const i1 = addInternalBead(state, a.x + dx / 3, a.y + dy / 3, a.z + dz / 3);
-        const i2 = addInternalBead(state, a.x + (2 * dx) / 3, a.y + (2 * dy) / 3, a.z + (2 * dz) / 3);
-        const segLen = restLen / 3;
-        state.bonds.push([ia, i1, segLen, abp.kInternal]);
-        state.bonds.push([i1, i2, segLen, abp.kInternal]);
-        state.bonds.push([i2, ib, segLen, abp.kInternal]);
-        state.bends.push([ia, i1, i2, abp.kBendInternal]);
-        state.bends.push([i1, i2, ib, abp.kBendInternal]);
-      }
-      nLinks++;
+      candidates.push({ fi, fj, k, m, score });
     }
-    counts.set(`${fi}-${fj}`, nLinks);
+  }
+  candidates.sort((a, b) => b.score - a.score);
+
+  const claimed = new Set<number>();
+
+  for (const c of candidates) {
+    const ia = beadIndex(params, c.fi, c.m);
+    const ib = beadIndex(params, c.fj, c.m);
+    if (claimed.has(ia) || claimed.has(ib)) continue;
+    claimed.add(ia);
+    claimed.add(ib);
+
+    if (abp.model === "single") {
+      state.crosslinks.push([ia, ib, restLen]);
+    } else if (abp.model === "linker2") {
+      const a = state.beads[ia];
+      const b = state.beads[ib];
+      const iInt = addInternalBead(
+        state,
+        0.5 * (a.x + b.x),
+        0.5 * (a.y + b.y),
+        0.5 * (a.z + b.z),
+      );
+      const segLen = restLen * 0.5;
+      state.bonds.push([ia, iInt, segLen, abp.kInternal]);
+      state.bonds.push([iInt, ib, segLen, abp.kInternal]);
+      state.bends.push([ia, iInt, ib, abp.kBendInternal]);
+    } else {
+      const a = state.beads[ia];
+      const b = state.beads[ib];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dz = b.z - a.z;
+      const i1 = addInternalBead(state, a.x + dx / 3, a.y + dy / 3, a.z + dz / 3);
+      const i2 = addInternalBead(state, a.x + (2 * dx) / 3, a.y + (2 * dy) / 3, a.z + (2 * dz) / 3);
+      const segLen = restLen / 3;
+      state.bonds.push([ia, i1, segLen, abp.kInternal]);
+      state.bonds.push([i1, i2, segLen, abp.kInternal]);
+      state.bonds.push([i2, ib, segLen, abp.kInternal]);
+      state.bends.push([ia, i1, i2, abp.kBendInternal]);
+      state.bends.push([i1, i2, ib, abp.kBendInternal]);
+    }
+    counts.set(`${c.fi}-${c.fj}`, (counts.get(`${c.fi}-${c.fj}`) ?? 0) + 1);
   }
 
   state.pairLinkCount = counts;
@@ -194,10 +257,13 @@ export function resetSystem(
   for (const f of state.filaments) {
     for (let m = 0; m < params.monomers; m++) {
       const taper = Math.sin(Math.PI * m / Math.max(1, params.monomers - 1));
+      const baseX = f.x;
+      const baseY = f.y;
+      const baseZ = m * params.b - zCenter;
       const bead: BeadMeta = {
-        x: f.x + disorder * taper * rng.normal(),
-        y: f.y + disorder * taper * rng.normal(),
-        z: m * params.b - zCenter + disorder * 0.25 * taper * rng.normal(),
+        x: baseX + disorder * taper * rng.normal(),
+        y: baseY + disorder * taper * rng.normal(),
+        z: baseZ + disorder * 0.25 * taper * rng.normal(),
         vx: 0,
         vy: 0,
         vz: 0,
@@ -206,9 +272,9 @@ export function resetSystem(
         fz: 0,
         f: f.id,
         m,
-        x0: f.x,
-        y0: f.y,
-        z0: m * params.b - zCenter,
+        x0: baseX,
+        y0: baseY,
+        z0: baseZ,
         pinned: false,
       };
       state.beads.push(bead);
@@ -217,7 +283,9 @@ export function resetSystem(
 
   for (const f of state.filaments) {
     for (let m = 0; m < params.monomers - 1; m++) {
-      state.bonds.push([beadIndex(params, f.id, m), beadIndex(params, f.id, m + 1), params.b]);
+      const ia = beadIndex(params, f.id, m);
+      const ib = beadIndex(params, f.id, m + 1);
+      state.bonds.push([ia, ib, params.b]);
     }
     for (let m = 1; m < params.monomers - 1; m++) {
       state.bends.push([

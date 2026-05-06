@@ -3,15 +3,18 @@ export const APP_HTML = String.raw`
     <aside>
       <h1>Actin bundle toy model</h1>
       <p>
-        Bead-chain filaments on a hexagonal lattice with a 12-state helical face label.
-        Crosslinks form only between beads whose exposed faces face each other across
-        the hex bond - no torsional force, just connectivity gated by phase.
+        Bead-chain filaments on a hexagonal lattice. Filament geometry is the toy
+        scaffold — beads sit on the filament axis with bond length b. Only the
+        binding-site registry is helical: each filament has a phase φ<sub>i</sub>
+        and monomer m exposes a binding direction θ<sub>i</sub>(m) = φ<sub>i</sub> + m·twist.
+        Crosslinks gate by angular alignment with the neighbor's hex direction.
       </p>
 
       <div class="equation">
-        Faces: D[0]=0°, D[1]=180°, D[4]=60°, D[5]=240°, D[8]=120°, D[9]=300°, others inactive.<br>
-        Bead m of filament i exposes D[(m+s<sub>i</sub>) mod 12].<br>
-        Crosslink (i,m)↔(j,m) allowed iff i shows direction k toward j and j shows k+3 toward i.
+        <strong>Discrete-12:</strong> bead m of filament i exposes D[(m+s<sub>i</sub>) mod 12]; (i,m)↔(j,m) allowed iff i shows direction k and j shows k+3.<br>
+        <strong>Continuous angular:</strong> θ<sub>i</sub>(m) = phaseOffset + φ<sub>i</sub> + handedness · twist · m.
+        Score = soft<sup>p</sup>(|θ<sub>i</sub>(m)−60°k|) · soft<sup>p</sup>(|θ<sub>j</sub>(m)−60°(k+3)|), gated by ±threshold.
+        MC samples φ<sub>i</sub> continuously.
       </div>
 
       <h2>Bundle</h2>
@@ -21,6 +24,24 @@ export const APP_HTML = String.raw`
       <div class="control"><label>Bead spacing b (nm, axial) <span id="bVal"></span></label><input id="b" type="range" min="2.0" max="3.5" step="0.05" value="2.75" /></div>
 
       <h2>Helicity &amp; registry</h2>
+      <div class="control">
+        <label>Helicity model</label>
+        <select id="helicityMode">
+          <option value="discrete12">Discrete 12-state</option>
+          <option value="continuous">Continuous angle</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Helix handedness</label>
+        <select id="helicityHandedness">
+          <option value="1">Right-handed (+1)</option>
+          <option value="-1">Left-handed (-1)</option>
+        </select>
+      </div>
+      <div class="control"><label>Twist / monomer (deg) <span id="actinTwistDegVal"></span></label><input id="actinTwistDeg" type="range" min="150" max="180" step="0.05" value="166.15" /></div>
+      <div class="control"><label>Phase offset (deg) <span id="helicityPhaseOffsetDegVal"></span></label><input id="helicityPhaseOffsetDeg" type="range" min="0" max="360" step="1" value="0" /></div>
+      <div class="control"><label>Angular threshold (deg) <span id="helicityAngleThresholdDegVal"></span></label><input id="helicityAngleThresholdDeg" type="range" min="0" max="180" step="1" value="30" /></div>
+      <div class="control"><label>Compatibility sharpness <span id="compatibilitySharpnessVal"></span></label><input id="compatibilitySharpness" type="range" min="0" max="6" step="0.05" value="1" /></div>
       <div class="control">
         <label>Registry mode</label>
         <select id="registryMode">
@@ -36,6 +57,7 @@ export const APP_HTML = String.raw`
       <div class="control"><label>MC ending T₁ <span id="mcT1Val"></span></label><input id="mcT1" type="range" min="0.001" max="4" step="0.001" value="0.05" /></div>
       <div class="control"><label>MC iterations <span id="mcItersVal"></span></label><input id="mcIters" type="range" min="500" max="40000" step="500" value="4000" /></div>
       <div class="control"><label>MC skew penalty <span id="mcSkewVal"></span></label><input id="mcSkew" type="range" min="0" max="1" step="0.01" value="0.15" /></div>
+      <div class="control"><label>MC phase σ₀ (deg, continuous) <span id="mcPhaseSigma0Val"></span></label><input id="mcPhaseSigma0" type="range" min="1" max="90" step="0.5" value="30" /></div>
       <div class="buttons"><button id="mcBtn" class="full">Optimize registries (Monte Carlo)</button></div>
 
       <h2>Crosslinker (ABP)</h2>

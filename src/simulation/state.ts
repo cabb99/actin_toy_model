@@ -49,6 +49,10 @@ export function createSimulationState(): SimulationState {
     },
     view: { ...defaultView, zoom: 4.2, panX: 0, panY: 0 },
     display: { showFaces: false, showRegistry: false, showFilaments: true },
+    helicity: {
+      compatibleSites: 0,
+      incompatibleSites: 0,
+    },
     nFilamentBeads: 0,
     nBackboneBonds: 0,
     nBackboneBends: 0,

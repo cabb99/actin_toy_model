@@ -1,17 +1,23 @@
 import { PHASE_LEN } from "../model/constants";
+import { wrapDeg360 } from "../model/hex";
 import type { Params, RegistryScore, Rng, SimulationState } from "../model/types";
-import { buildCrosslinks, compatibleAt } from "./topology";
+import { buildCrosslinks, compatibilityScore } from "./topology";
 
 export function scoreRegistries(state: SimulationState, params: Params): RegistryScore {
   let total = 0;
+  let count = 0;
   const counts: number[] = [];
   for (const [fi, fj, k] of state.neighborPairs) {
-    let n = 0;
+    let pairScore = 0;
     for (let m = 0; m < params.monomers; m++) {
-      if (compatibleAt(state, params, fi, fj, k, m)) n++;
+      const s = compatibilityScore(state, params, fi, fj, k, m);
+      if (s > 0) {
+        pairScore += s;
+        count++;
+      }
     }
-    counts.push(n);
-    total += n;
+    counts.push(pairScore);
+    total += pairScore;
   }
   const avg = counts.length ? total / counts.length : 0;
   let varSum = 0;
@@ -20,11 +26,11 @@ export function scoreRegistries(state: SimulationState, params: Params): Registr
   const lim = avg * 2.0;
   for (const n of counts) {
     varSum += (n - avg) ** 2;
-    if (n === 0) zero++;
+    if (n <= 0) zero++;
     if (n > lim) hot++;
   }
   const std = counts.length ? Math.sqrt(varSum / counts.length) : 0;
-  return { total, counts, avg, std, zero, hot, pairs: counts.length };
+  return { total, counts, avg, std, zero, hot, pairs: counts.length, count };
 }
 
 export function mcEnergy(score: RegistryScore, skewPenalty: number): number {
@@ -54,40 +60,67 @@ export async function runMonteCarlo(
   const logEvery = Math.max(1, Math.floor(iters / 8));
   const N = state.filaments.length;
 
+  const continuous = params.helicityMode === "continuous";
+  const sigma0 = Math.max(0.1, params.mcPhaseSigma0 ?? 30);
+
   let cur = scoreRegistries(state, params);
   let curE = mcEnergy(cur, skewPenalty);
   let best = { ...cur };
   const bestS = state.filaments.map((f) => f.s);
+  const bestPhase = state.filaments.map((f) => f.phaseDeg);
   let accepts = 0;
 
   opts.onProgress?.(
-    `MC start: iters=${iters} T0=${T0} T1=${T1} skew=${skewPenalty.toFixed(2)} init score=${cur.total}`,
+    `MC start: iters=${iters} T0=${T0} T1=${T1} skew=${skewPenalty.toFixed(2)} ` +
+      `mode=${continuous ? "continuous" : "discrete12"} sigma0=${sigma0.toFixed(1)}° ` +
+      `init score=${cur.total.toFixed(2)}`,
   );
 
   for (let it = 0; it < iters; it++) {
     const T = T0 * Math.pow(T1 / T0, it / iters);
+    const sigma = sigma0 * Math.sqrt(T / T0);
     let undo: () => void;
 
     if (rng.random() < 0.7) {
       const i = Math.floor(rng.random() * N);
-      const oldS = state.filaments[i].s;
-      const ds = 1 + Math.floor(rng.random() * (PHASE_LEN - 1));
-      state.filaments[i].s = (oldS + ds) % PHASE_LEN;
-      undo = () => {
-        state.filaments[i].s = oldS;
-      };
+      if (continuous) {
+        const oldPhase = state.filaments[i].phaseDeg;
+        const dphi = sigma * rng.normal();
+        state.filaments[i].phaseDeg = wrapDeg360(oldPhase + dphi);
+        undo = () => {
+          state.filaments[i].phaseDeg = oldPhase;
+        };
+      } else {
+        const oldS = state.filaments[i].s;
+        const ds = 1 + Math.floor(rng.random() * (PHASE_LEN - 1));
+        state.filaments[i].s = (oldS + ds) % PHASE_LEN;
+        undo = () => {
+          state.filaments[i].s = oldS;
+        };
+      }
     } else {
       const i = Math.floor(rng.random() * N);
       let j = Math.floor(rng.random() * N);
       if (j === i) j = (j + 1) % N;
-      const a = state.filaments[i].s;
-      const b = state.filaments[j].s;
-      state.filaments[i].s = b;
-      state.filaments[j].s = a;
-      undo = () => {
-        state.filaments[i].s = a;
-        state.filaments[j].s = b;
-      };
+      if (continuous) {
+        const pi = state.filaments[i].phaseDeg;
+        const pj = state.filaments[j].phaseDeg;
+        state.filaments[i].phaseDeg = pj;
+        state.filaments[j].phaseDeg = pi;
+        undo = () => {
+          state.filaments[i].phaseDeg = pi;
+          state.filaments[j].phaseDeg = pj;
+        };
+      } else {
+        const a = state.filaments[i].s;
+        const b = state.filaments[j].s;
+        state.filaments[i].s = b;
+        state.filaments[j].s = a;
+        undo = () => {
+          state.filaments[i].s = a;
+          state.filaments[j].s = b;
+        };
+      }
     }
 
     const trial = scoreRegistries(state, params);
@@ -97,9 +130,15 @@ export async function runMonteCarlo(
       curE = trialE;
       cur = trial;
       accepts++;
-      if (cur.total > best.total || (cur.total === best.total && cur.std < best.std)) {
+      const eps = 1e-9;
+      const better = cur.total > best.total + eps;
+      const tied = Math.abs(cur.total - best.total) <= eps;
+      if (better || (tied && cur.std <= best.std)) {
         best = { ...cur };
-        for (let k = 0; k < N; k++) bestS[k] = state.filaments[k].s;
+        for (let k = 0; k < N; k++) {
+          bestS[k] = state.filaments[k].s;
+          bestPhase[k] = state.filaments[k].phaseDeg;
+        }
       }
     } else {
       undo();
@@ -107,10 +146,9 @@ export async function runMonteCarlo(
 
     if ((it + 1) % logEvery === 0) {
       opts.onProgress?.(
-        `it ${it + 1}/${iters} T=${T.toFixed(3)} cur=${cur.total} best=${best.total} acc=${(
-          (accepts / (it + 1)) *
-          100
-        ).toFixed(1)}%`,
+        `it ${it + 1}/${iters} T=${T.toFixed(3)} σ=${sigma.toFixed(2)}° ` +
+          `cur=${cur.total.toFixed(2)} best=${best.total.toFixed(2)} ` +
+          `acc=${((accepts / (it + 1)) * 100).toFixed(1)}%`,
       );
     }
     if ((it + 1) % yieldEvery === 0) {
@@ -118,15 +156,16 @@ export async function runMonteCarlo(
     }
   }
 
-  for (let k = 0; k < N; k++) state.filaments[k].s = bestS[k];
+  for (let k = 0; k < N; k++) {
+    state.filaments[k].s = bestS[k];
+    state.filaments[k].phaseDeg = bestPhase[k];
+  }
   params.registryMode = "custom";
   buildCrosslinks(state, params, rng);
 
   opts.onProgress?.(
-    `MC done - best score ${best.total}, empty pairs ${best.zero}/${best.pairs}, accept rate ${(
-      (accepts / iters) *
-      100
-    ).toFixed(1)}%`,
+    `MC done - best score ${best.total.toFixed(2)} (${best.count} sites), ` +
+      `empty pairs ${best.zero}/${best.pairs}, accept rate ${((accepts / iters) * 100).toFixed(1)}%`,
   );
 
   return best;

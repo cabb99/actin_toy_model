@@ -89,6 +89,24 @@ refs.controls.bendLayers.addEventListener("change", () => {
   commitLiveParams();
   applyPerturbationConstraints(state, params);
 });
+refs.controls.helicityAngleThresholdDeg.addEventListener("change", () => {
+  commitLiveParams();
+  rebuildCrosslinkTopology();
+});
+refs.controls.compatibilitySharpness.addEventListener("change", () => {
+  commitLiveParams();
+  rebuildCrosslinkTopology();
+});
+
+for (const id of [
+  "actinTwistDeg",
+  "helicityPhaseOffsetDeg",
+] as const) {
+  refs.controls[id].addEventListener("change", () => reset(false));
+}
+
+refs.selects.helicityMode.addEventListener("change", () => reset(false));
+refs.selects.helicityHandedness.addEventListener("change", () => reset(false));
 
 refs.selects.registryMode.addEventListener("change", () => {
   commitLiveParams();

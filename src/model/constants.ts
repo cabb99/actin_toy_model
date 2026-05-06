@@ -72,6 +72,8 @@ export const ABP_PRESETS: Record<Exclude<AbpType, "custom">, AbpPreset> = {
 export const KBT_PN_NM = 4.114;
 export const ACTIN_LP_NM = 10000;
 export const ACTIN_KAPPA = ACTIN_LP_NM * KBT_PN_NM;
+export const ACTIN_TWIST_DEG = 166.15;
+export const ACTIN_ANGLE_THRESHOLD_DEG = 30;
 
 export function actinKtheta(b: number): number {
   return ACTIN_KAPPA / b;
@@ -106,6 +108,13 @@ export function defaultParams(): Params {
     mcSkew: 0.15,
     sigma: Math.max(2.0, a * 0.55),
     drag: 0.96,
+    helicityMode: "discrete12",
+    actinTwistDeg: ACTIN_TWIST_DEG,
+    helicityHandedness: 1,
+    helicityPhaseOffsetDeg: 0,
+    helicityAngleThresholdDeg: ACTIN_ANGLE_THRESHOLD_DEG,
+    compatibilitySharpness: 1,
+    mcPhaseSigma0: 30,
     registryMode: "perfect",
     abpType: "fascin",
     perturbMode: "none",

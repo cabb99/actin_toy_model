@@ -7,6 +7,10 @@ export const controlIds = [
   "monomers",
   "b",
   "a",
+  "actinTwistDeg",
+  "helicityPhaseOffsetDeg",
+  "helicityAngleThresholdDeg",
+  "compatibilitySharpness",
   "kb",
   "clDist",
   "ktheta",
@@ -24,9 +28,16 @@ export const controlIds = [
   "mcT1",
   "mcIters",
   "mcSkew",
+  "mcPhaseSigma0",
 ] as const;
 
-export const selectIds = ["registryMode", "abpType", "perturbMode"] as const;
+export const selectIds = [
+  "helicityMode",
+  "helicityHandedness",
+  "registryMode",
+  "abpType",
+  "perturbMode",
+] as const;
 export const structuralKeys = new Set<string>(["rings", "monomers", "b", "a"]);
 
 export type ControlId = (typeof controlIds)[number];
@@ -91,6 +102,8 @@ export function readParams(params: Params, refs: Pick<DomRefs, "controls" | "sel
   params.bendKAngle = 10 ** params.bendKAngleLog10;
   params.sigma = Math.max(2.0, (params.a || 1) * 0.55);
   params.drag = 0.96;
+  params.helicityMode = refs.selects.helicityMode.value as Params["helicityMode"];
+  params.helicityHandedness = Number(refs.selects.helicityHandedness.value) === -1 ? -1 : 1;
   params.registryMode = refs.selects.registryMode.value as Params["registryMode"];
   params.abpType = refs.selects.abpType.value as Params["abpType"];
   params.perturbMode = refs.selects.perturbMode.value as Params["perturbMode"];
@@ -106,6 +119,10 @@ export function updateLabels(params: Params, controls: Controls, values: ValueLa
   values.monomers.textContent = monomersLive.toString();
   values.b.textContent = bLive.toFixed(2);
   values.a.textContent = aLive.toFixed(1);
+  values.actinTwistDeg.textContent = params.actinTwistDeg.toFixed(2);
+  values.helicityPhaseOffsetDeg.textContent = params.helicityPhaseOffsetDeg.toFixed(0);
+  values.helicityAngleThresholdDeg.textContent = params.helicityAngleThresholdDeg.toFixed(0);
+  values.compatibilitySharpness.textContent = params.compatibilitySharpness.toFixed(2);
   values.kb.textContent = params.kb.toFixed(0);
   values.clDist.textContent = params.clDist.toFixed(1);
   values.ktheta.textContent = `${params.ktheta.toFixed(0)} (Lp ≈ ${(
@@ -127,6 +144,7 @@ export function updateLabels(params: Params, controls: Controls, values: ValueLa
   values.mcT1.textContent = params.mcT1.toFixed(3);
   values.mcIters.textContent = Math.round(params.mcIters).toString();
   values.mcSkew.textContent = params.mcSkew.toFixed(2);
+  values.mcPhaseSigma0.textContent = params.mcPhaseSigma0.toFixed(1);
 }
 
 export function applyAbpPresetToControls(type: AbpType, params: Params, refs: DomRefs, adjustLattice = true): void {

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { HEX_DIRS, PHASE_LEN } from "../../src/model/constants";
-import { axialToXY, defaultRegistry, exposedK } from "../../src/model/hex";
+import {
+  angularDistanceDeg,
+  axialToXY,
+  clampAngleThresholdDeg,
+  defaultRegistry,
+  exposedK,
+  withinAngleThresholdDeg,
+  wrapDeg360,
+} from "../../src/model/hex";
 
 describe("hex and phase model", () => {
   it("maps axial directions to the expected hex orientation", () => {
@@ -32,5 +40,18 @@ describe("hex and phase model", () => {
     expect(defaultRegistry(1, 2)).toBe(5);
     expect(defaultRegistry(-1, -2)).toBe(7);
     expect(defaultRegistry(0, 0, 14)).toBe(2);
+  });
+
+  it("wraps and compares angles across the 0/360 seam", () => {
+    expect(wrapDeg360(360)).toBe(0);
+    expect(wrapDeg360(-30)).toBe(330);
+    expect(angularDistanceDeg(359, 1)).toBeCloseTo(2);
+  });
+
+  it("clamps threshold bounds and applies inclusive threshold gating", () => {
+    expect(clampAngleThresholdDeg(-2)).toBe(0);
+    expect(clampAngleThresholdDeg(999)).toBe(180);
+    expect(withinAngleThresholdDeg(10, 10)).toBe(true);
+    expect(withinAngleThresholdDeg(10.001, 10)).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import { PHASE_LEN, PHASE_TO_K } from "./constants";
-import type { Vec2 } from "./types";
+import type { Params, Vec2 } from "./types";
 
 export function axialToXY(q: number, r: number, a: number): Vec2 {
   return {
@@ -15,4 +15,47 @@ export function exposedK(m: number, s: number): number | null {
 
 export function defaultRegistry(q: number, r: number, s0 = 0): number {
   return ((s0 + q + 2 * r) % PHASE_LEN + PHASE_LEN) % PHASE_LEN;
+}
+
+export function wrapDeg360(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+export function angularDistanceDeg(a: number, b: number): number {
+  const d = ((a - b + 180) % 360 + 360) % 360 - 180;
+  return Math.abs(d);
+}
+
+export function clampAngleThresholdDeg(thresholdDeg: number): number {
+  return Math.max(0, Math.min(180, thresholdDeg));
+}
+
+export function withinAngleThresholdDeg(mismatchDeg: number, thresholdDeg: number): boolean {
+  return mismatchDeg <= clampAngleThresholdDeg(thresholdDeg);
+}
+
+export function hexDirectionDeg(k: number): number {
+  return wrapDeg360(k * 60);
+}
+
+export function monomerExposedAngleDeg(m: number, phaseDeg: number, params: Pick<
+  Params,
+  "actinTwistDeg" | "helicityHandedness" | "helicityPhaseOffsetDeg"
+>): number {
+  const phaseFromMonomer = params.helicityHandedness * params.actinTwistDeg * m;
+  return wrapDeg360(params.helicityPhaseOffsetDeg + phaseDeg + phaseFromMonomer);
+}
+
+export function softAngularScore(
+  mismatchDeg: number,
+  thresholdDeg: number,
+  sharpness: number,
+): number {
+  const t = clampAngleThresholdDeg(thresholdDeg);
+  if (t <= 0) return mismatchDeg <= 0 ? 1 : 0;
+  if (mismatchDeg > t) return 0;
+  const k = Math.max(0, sharpness);
+  if (k === 0) return 1;
+  const x = mismatchDeg / t;
+  return Math.pow(Math.cos((x * Math.PI) / 2), k);
 }

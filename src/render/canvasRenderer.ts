@@ -1,6 +1,6 @@
 import type { BeadMeta, Params, ProjectedPoint, Renderer, SimulationState, Vec3 } from "../model/types";
 import { FACE_COLORS, PHASE_LEN } from "../model/constants";
-import { exposedK } from "../model/hex";
+import { exposedK, wrapDeg360 } from "../model/hex";
 import { defaultView } from "../simulation/state";
 import { clamp } from "./color";
 
@@ -173,7 +173,10 @@ export class CanvasRenderer implements Renderer {
       return FACE_COLORS[k];
     }
     if (this.state.display.showRegistry) {
-      const hue = (f.s / PHASE_LEN) * 360;
+      const hue =
+        this.params.helicityMode === "continuous"
+          ? wrapDeg360(f.phaseDeg)
+          : (f.s / PHASE_LEN) * 360;
       return `hsl(${hue.toFixed(0)}, 70%, 65%)`;
     }
     return "rgba(201, 215, 231, 0.85)";
