@@ -1,4 +1,4 @@
-import { HEX_DIRS, PHASE_LEN } from "../model/constants";
+import { HEX_DIRS, MIN_CROSSLINK_SPACING_MONOMERS, PHASE_LEN } from "../model/constants";
 import { currentAbpEffective } from "../model/abp";
 import {
   angularDistanceDeg,
@@ -195,11 +195,27 @@ export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng
   candidates.sort((a, b) => b.score - a.score);
 
   const claimed = new Set<number>();
+  const pairOccupied = new Map<string, number[]>();
 
   for (const c of candidates) {
     const ia = beadIndex(params, c.fi, c.m);
     const ib = beadIndex(params, c.fj, c.m);
     if (claimed.has(ia) || claimed.has(ib)) continue;
+    const pairKey = `${c.fi}-${c.fj}`;
+    const occupied = pairOccupied.get(pairKey);
+    if (occupied) {
+      let tooClose = false;
+      for (const m of occupied) {
+        if (Math.abs(m - c.m) < MIN_CROSSLINK_SPACING_MONOMERS) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+      occupied.push(c.m);
+    } else {
+      pairOccupied.set(pairKey, [c.m]);
+    }
     claimed.add(ia);
     claimed.add(ib);
 

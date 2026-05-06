@@ -75,6 +75,11 @@ export const ACTIN_KAPPA = ACTIN_LP_NM * KBT_PN_NM;
 export const ACTIN_TWIST_DEG = 166.15;
 export const ACTIN_ANGLE_THRESHOLD_DEG = 30;
 
+// Two crosslinkers on the same filament pair cannot be closer than this many
+// monomers along the bundle axis. Conflicts resolve by keeping the highest-
+// scoring (lowest-energy) candidate.
+export const MIN_CROSSLINK_SPACING_MONOMERS = 5;
+
 export function actinKtheta(b: number): number {
   return ACTIN_KAPPA / b;
 }

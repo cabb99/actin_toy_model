@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultParams } from "../../src/model/constants";
+import { defaultParams, MIN_CROSSLINK_SPACING_MONOMERS } from "../../src/model/constants";
 import type { Params, SimulationState } from "../../src/model/types";
 import { computeForces } from "../../src/simulation/forces";
 import { createSeededRng } from "../../src/simulation/random";
@@ -198,6 +198,41 @@ describe("topology", () => {
     }
     expect(state.crosslinks.length).toBeGreaterThan(0);
     for (const n of beadUseCount.values()) expect(n).toBe(1);
+  });
+
+  it("enforces minimum crosslink spacing along each filament pair", () => {
+    // Continuous mode + zero twist + wide threshold = every monomer is
+    // compatible at k=0, so without the spacing rule we'd get one crosslink
+    // per monomer. With the rule we must see gaps of >= MIN_CROSSLINK_SPACING.
+    const params = smallParams({
+      monomers: 24,
+      helicityMode: "continuous",
+      helicityAngleThresholdDeg: 90,
+      compatibilitySharpness: 0,
+      sat: 1,
+      abpType: "fascin",
+      actinTwistDeg: 0,
+    });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(30), false);
+    state.filaments[0].phaseDeg = 0;
+    state.filaments[1].phaseDeg = 180;
+    state.neighborPairs = [[0, 1, 0]];
+
+    buildCrosslinks(state, params, createSeededRng(31));
+
+    expect(state.crosslinks.length).toBeGreaterThan(0);
+    const ms = state.crosslinks
+      .map(([ia]) => state.beads[ia].m)
+      .sort((a, b) => a - b);
+    for (let i = 1; i < ms.length; i++) {
+      expect(ms[i] - ms[i - 1]).toBeGreaterThanOrEqual(MIN_CROSSLINK_SPACING_MONOMERS);
+    }
+
+    const score = scoreRegistries(state, params);
+    const upperBound = Math.ceil(params.monomers / MIN_CROSSLINK_SPACING_MONOMERS);
+    expect(score.count).toBeLessThanOrEqual(upperBound);
+    expect(score.count).toBe(state.crosslinks.length);
   });
 
   it("preserves toy-model bead geometry under continuous helicity mode", () => {
