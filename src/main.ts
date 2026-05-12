@@ -204,6 +204,8 @@ let touchStartX = 0;
 let touchStartY = 0;
 const TOUCH_GRAB_DELAY_MS = 280;
 const TOUCH_MOVE_TOLERANCE_PX = 8;
+const PICK_RADIUS_PX = 36;
+const TOUCH_PICK_RADIUS_PX = 42;
 
 function clearTouchGrabTimer(): void {
   if (touchGrabTimer !== null) {
@@ -212,7 +214,7 @@ function clearTouchGrabTimer(): void {
   }
 }
 
-function pickBeadAt(mx: number, my: number, radiusPx = 36): number {
+function pickBeadAt(mx: number, my: number, radiusPx = PICK_RADIUS_PX): number {
   const projected = state.beads.map((p) => renderer.project(p));
   let best = -1;
   let bestD2 = radiusPx * radiusPx;
@@ -267,11 +269,12 @@ refs.canvas.addEventListener("pointerdown", (ev) => {
     touchStartX = ev.clientX;
     touchStartY = ev.clientY;
     clearTouchGrabTimer();
+    // Slightly delayed so normal touch rotation does not accidentally trigger grab.
     touchGrabTimer = window.setTimeout(() => {
       if (!dragging || activePointerId !== ev.pointerId) return;
       const moved = Math.hypot(lastX - touchStartX, lastY - touchStartY) > TOUCH_MOVE_TOLERANCE_PX;
       if (moved) return;
-      const picked = beginGrabAt(mx, my, 42);
+      const picked = beginGrabAt(mx, my, TOUCH_PICK_RADIUS_PX);
       if (picked) {
         dragging = false;
         refs.canvas.classList.remove("dragging");
@@ -280,7 +283,7 @@ refs.canvas.addEventListener("pointerdown", (ev) => {
     return;
   }
   if (ev.ctrlKey) {
-    beginGrabAt(mx, my, 36);
+    beginGrabAt(mx, my, PICK_RADIUS_PX);
   } else {
     dragging = true;
     refs.canvas.classList.add("dragging");
