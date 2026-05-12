@@ -242,7 +242,7 @@ function beginGrabAt(mx: number, my: number, radiusPx = 36): boolean {
 }
 
 function releaseInteraction(ev: PointerEvent): void {
-  if (activePointerId !== null && ev.pointerId !== activePointerId && state.grabbedBead < 0) return;
+  if (activePointerId !== null && ev.pointerId !== activePointerId) return;
   clearTouchGrabTimer();
   dragging = false;
   activePointerId = null;
