@@ -230,7 +230,7 @@ function pickBeadAt(mx: number, my: number, radiusPx = PICK_RADIUS_PX): number {
   return best;
 }
 
-function beginGrabAt(mx: number, my: number, radiusPx = 36): boolean {
+function beginGrabAt(mx: number, my: number, radiusPx = PICK_RADIUS_PX): boolean {
   const best = pickBeadAt(mx, my, radiusPx);
   state.grabbedBead = best;
   if (best < 0) {
