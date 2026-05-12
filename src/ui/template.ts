@@ -123,7 +123,7 @@ export const APP_HTML = String.raw`
       <canvas id="canvas"></canvas>
       <div class="legend" id="legend"></div>
       <div class="readout" id="readout"></div>
-      <div class="hint">Drag to rotate · Wheel zoom · Shift-drag pan · Ctrl-drag a bead to grab</div>
+      <div class="hint">Drag to rotate · Wheel zoom · Shift-drag pan · Ctrl-drag to grab · Touch: drag rotate, long-press then drag to grab</div>
     </main>
   </div>
 `;

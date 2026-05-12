@@ -198,40 +198,100 @@ toggleBtn("ghostToggle", "showFilaments");
 let dragging = false;
 let lastX = 0;
 let lastY = 0;
+let activePointerId: number | null = null;
+let touchGrabTimer: number | null = null;
+let touchStartX = 0;
+let touchStartY = 0;
+const TOUCH_GRAB_DELAY_MS = 280;
+const TOUCH_MOVE_TOLERANCE_PX = 8;
+
+function clearTouchGrabTimer(): void {
+  if (touchGrabTimer !== null) {
+    window.clearTimeout(touchGrabTimer);
+    touchGrabTimer = null;
+  }
+}
+
+function pickBeadAt(mx: number, my: number, radiusPx = 36): number {
+  const projected = state.beads.map((p) => renderer.project(p));
+  let best = -1;
+  let bestD2 = radiusPx * radiusPx;
+  for (let i = 0; i < projected.length; i++) {
+    const dx = projected[i].x - mx;
+    const dy = projected[i].y - my;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      best = i;
+      bestD2 = d2;
+    }
+  }
+  return best;
+}
+
+function beginGrabAt(mx: number, my: number, radiusPx = 36): boolean {
+  const best = pickBeadAt(mx, my, radiusPx);
+  state.grabbedBead = best;
+  if (best < 0) {
+    refs.canvas.classList.remove("grabbing");
+    return false;
+  }
+  const b = state.beads[best];
+  state.grabTarget = { x: b.x, y: b.y, z: b.z };
+  refs.canvas.classList.add("grabbing");
+  return true;
+}
+
+function releaseInteraction(ev: PointerEvent): void {
+  if (activePointerId !== null && ev.pointerId !== activePointerId && state.grabbedBead < 0) return;
+  clearTouchGrabTimer();
+  dragging = false;
+  activePointerId = null;
+  state.grabbedBead = -1;
+  refs.canvas.classList.remove("dragging");
+  refs.canvas.classList.remove("grabbing");
+  if (refs.canvas.hasPointerCapture(ev.pointerId)) refs.canvas.releasePointerCapture(ev.pointerId);
+}
 
 refs.canvas.addEventListener("pointerdown", (ev) => {
   const rect = refs.canvas.getBoundingClientRect();
   const mx = ev.clientX - rect.left;
   const my = ev.clientY - rect.top;
-  if (ev.ctrlKey) {
-    const projected = state.beads.map((p) => renderer.project(p));
-    let best = -1;
-    let bestD2 = 36 * 36;
-    for (let i = 0; i < projected.length; i++) {
-      const dx = projected[i].x - mx;
-      const dy = projected[i].y - my;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
-        best = i;
-        bestD2 = d2;
+  activePointerId = ev.pointerId;
+  refs.canvas.setPointerCapture(ev.pointerId);
+  if (ev.pointerType === "touch") {
+    ev.preventDefault();
+    dragging = true;
+    refs.canvas.classList.add("dragging");
+    lastX = ev.clientX;
+    lastY = ev.clientY;
+    touchStartX = ev.clientX;
+    touchStartY = ev.clientY;
+    clearTouchGrabTimer();
+    touchGrabTimer = window.setTimeout(() => {
+      if (!dragging || activePointerId !== ev.pointerId) return;
+      const moved = Math.hypot(lastX - touchStartX, lastY - touchStartY) > TOUCH_MOVE_TOLERANCE_PX;
+      if (moved) return;
+      const picked = beginGrabAt(mx, my, 42);
+      if (picked) {
+        dragging = false;
+        refs.canvas.classList.remove("dragging");
       }
-    }
-    state.grabbedBead = best;
-    if (best >= 0) {
-      const b = state.beads[best];
-      state.grabTarget = { x: b.x, y: b.y, z: b.z };
-    }
-    refs.canvas.classList.add("grabbing");
+    }, TOUCH_GRAB_DELAY_MS);
+    return;
+  }
+  if (ev.ctrlKey) {
+    beginGrabAt(mx, my, 36);
   } else {
     dragging = true;
     refs.canvas.classList.add("dragging");
     lastX = ev.clientX;
     lastY = ev.clientY;
   }
-  refs.canvas.setPointerCapture(ev.pointerId);
 });
 
 refs.canvas.addEventListener("pointermove", (ev) => {
+  if (activePointerId !== null && ev.pointerId !== activePointerId) return;
+  if (ev.pointerType === "touch") ev.preventDefault();
   if (state.grabbedBead >= 0) {
     const rect = refs.canvas.getBoundingClientRect();
     const mx = ev.clientX - rect.left;
@@ -252,6 +312,12 @@ refs.canvas.addEventListener("pointermove", (ev) => {
     const z = sy * rx + cy * z0;
     state.grabTarget = { x, y: y1, z };
   } else if (dragging) {
+    if (
+      ev.pointerType === "touch" &&
+      Math.hypot(ev.clientX - touchStartX, ev.clientY - touchStartY) > TOUCH_MOVE_TOLERANCE_PX
+    ) {
+      clearTouchGrabTimer();
+    }
     const dx = ev.clientX - lastX;
     const dy = ev.clientY - lastY;
     lastX = ev.clientX;
@@ -267,13 +333,8 @@ refs.canvas.addEventListener("pointermove", (ev) => {
   }
 });
 
-refs.canvas.addEventListener("pointerup", (ev) => {
-  dragging = false;
-  state.grabbedBead = -1;
-  refs.canvas.classList.remove("dragging");
-  refs.canvas.classList.remove("grabbing");
-  refs.canvas.releasePointerCapture(ev.pointerId);
-});
+refs.canvas.addEventListener("pointerup", releaseInteraction);
+refs.canvas.addEventListener("pointercancel", releaseInteraction);
 
 refs.canvas.addEventListener(
   "wheel",
