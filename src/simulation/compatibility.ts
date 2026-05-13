@@ -2,8 +2,11 @@ import { MIN_CROSSLINK_SPACING_MONOMERS } from "../model/constants";
 import {
   angularDistanceDeg,
   exposedK,
-  hexDirectionDeg,
+  latticeDirectionDeg,
+  latticeDirectionFaceK,
   monomerExposedAngleDeg,
+  oppositeLatticeDirectionDeg,
+  oppositeLatticeDirectionFaceK,
   softAngularScore,
 } from "../model/hex";
 import type { Params, RegistryScore, Rng, SimulationState } from "../model/types";
@@ -32,16 +35,18 @@ export function compatibilityScore(
   const fi0 = state.filaments[fi];
   const fj0 = state.filaments[fj];
   if (!fi0 || !fj0) return 0;
-  const oppK = (k + 3) % 6;
+  const lattice = params.latticeGeometry;
 
   if (params.helicityMode !== "continuous") {
-    return exposedK(m, fi0.s) === k && exposedK(m, fj0.s) === oppK ? 1 : 0;
+    const faceK = latticeDirectionFaceK(lattice, k);
+    const oppFaceK = oppositeLatticeDirectionFaceK(lattice, k);
+    return exposedK(m, fi0.s) === faceK && exposedK(m, fj0.s) === oppFaceK ? 1 : 0;
   }
 
   const iAngle = monomerExposedAngleDeg(m, fi0.phaseDeg, params);
   const jAngle = monomerExposedAngleDeg(m, fj0.phaseDeg, params);
-  const iMismatch = angularDistanceDeg(iAngle, hexDirectionDeg(k));
-  const jMismatch = angularDistanceDeg(jAngle, hexDirectionDeg(oppK));
+  const iMismatch = angularDistanceDeg(iAngle, latticeDirectionDeg(lattice, k));
+  const jMismatch = angularDistanceDeg(jAngle, oppositeLatticeDirectionDeg(lattice, k));
   const threshold = params.helicityAngleThresholdDeg;
   const sharp = params.compatibilitySharpness;
   const si = softAngularScore(iMismatch, threshold, sharp);

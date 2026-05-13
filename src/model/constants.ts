@@ -26,6 +26,13 @@ export const HEX_DIRS = [
   [1, -1],
 ] as const;
 
+export const SQUARE_DIRS = [
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+  [0, -1],
+] as const;
+
 export const ABP_PRESETS: Record<Exclude<AbpType, "custom">, AbpPreset> = {
   fascin: {
     model: "single",
@@ -84,6 +91,7 @@ export function defaultParams(): Params {
   const a = 11.0;
   const bendKAngle = 5000;
   return {
+    latticeGeometry: "hex",
     rings: 2,
     monomers: 96,
     b,

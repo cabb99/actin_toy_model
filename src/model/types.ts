@@ -3,8 +3,10 @@ export type AbpType = "fascin" | "actinin" | "camkii" | "custom";
 export type PerturbMode = "none" | "bend3";
 export type AbpModel = "single" | "linker2" | "linker4";
 export type HelicityMode = "discrete12" | "continuous";
+export type LatticeGeometry = "hex" | "square";
 
 export interface Params {
+  latticeGeometry: LatticeGeometry;
   rings: number;
   monomers: number;
   b: number;

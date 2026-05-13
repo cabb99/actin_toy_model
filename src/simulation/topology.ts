@@ -1,6 +1,6 @@
-import { HEX_DIRS, PHASE_LEN } from "../model/constants";
+import { HEX_DIRS, PHASE_LEN, SQUARE_DIRS } from "../model/constants";
 import { currentAbpEffective } from "../model/abp";
-import { axialToXY, defaultRegistry } from "../model/hex";
+import { axialToXY, defaultLatticeRegistry } from "../model/hex";
 import type { BeadMeta, Params, Rng, SimulationState, Vec3 } from "../model/types";
 import { scoreRegistries, selectCrosslinkSites } from "./compatibility";
 import { randomRegistry } from "./random";
@@ -17,22 +17,34 @@ export function buildFilaments(state: SimulationState, params: Params, rng: Rng)
   const R = params.rings;
   let id = 0;
 
-  for (let q = -R; q <= R; q++) {
-    for (let r = -R; r <= R; r++) {
-      const s = -q - r;
-      if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) <= R) {
-        const xy = axialToXY(q, r, params.a);
-        state.filaments.push({ id, q, r, x: xy.x, y: xy.y, s: 0, phaseDeg: 0 });
+  if (params.latticeGeometry === "square") {
+    for (let q = -R; q <= R; q++) {
+      for (let r = -R; r <= R; r++) {
+        state.filaments.push({ id, q, r, x: q * params.a, y: r * params.a, s: 0, phaseDeg: 0 });
         byKey.set(`${q},${r}`, id);
         id++;
+      }
+    }
+  } else {
+    for (let q = -R; q <= R; q++) {
+      for (let r = -R; r <= R; r++) {
+        const s = -q - r;
+        if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) <= R) {
+          const xy = axialToXY(q, r, params.a);
+          state.filaments.push({ id, q, r, x: xy.x, y: xy.y, s: 0, phaseDeg: 0 });
+          byKey.set(`${q},${r}`, id);
+          id++;
+        }
       }
     }
   }
 
   state.neighborPairs = [];
+  const dirs = params.latticeGeometry === "square" ? SQUARE_DIRS : HEX_DIRS;
+  const uniqueDirCount = params.latticeGeometry === "square" ? 2 : 3;
   for (const f of state.filaments) {
-    for (let k = 0; k < 3; k++) {
-      const [dq, dr] = HEX_DIRS[k];
+    for (let k = 0; k < uniqueDirCount; k++) {
+      const [dq, dr] = dirs[k];
       const j = byKey.get(`${f.q + dq},${f.r + dr}`);
       if (j !== undefined) state.neighborPairs.push([f.id, j, k]);
     }
@@ -57,7 +69,7 @@ export function assignRegistries(state: SimulationState, params: Params, rng: Rn
         break;
       case "perfect":
       default:
-        f.s = defaultRegistry(f.q, f.r);
+        f.s = defaultLatticeRegistry(f.q, f.r, params.latticeGeometry);
         f.phaseDeg = phaseStep * f.s;
     }
   }
@@ -344,4 +356,3 @@ export function updateAngleBendReference(state: SimulationState, params: Params)
   state.bend.angleMoment = -params.bendKAngle * delta;
   state.perturb.angleMoment = state.bend.angleMoment;
 }
-

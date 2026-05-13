@@ -77,6 +77,7 @@ for (const id of ["rings", "monomers", "b", "a"] as const) {
   refs.controls[id].addEventListener("change", () => reset(false));
 }
 
+refs.selects.latticeGeometry.addEventListener("change", () => reset(false));
 refs.controls.sat.addEventListener("change", () => {
   commitLiveParams();
   rebuildCrosslinkTopology();

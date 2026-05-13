@@ -3,22 +3,29 @@ export const APP_HTML = String.raw`
     <aside>
       <h1>Actin bundle toy model</h1>
       <p>
-        Bead-chain filaments on a hexagonal lattice. Filament geometry is the toy
+        Bead-chain filaments on a selectable hexagonal or square lattice. Filament geometry is the toy
         scaffold — beads sit on the filament axis with bond length b. Only the
         binding-site registry is helical: each filament has a phase φ<sub>i</sub>
         and monomer m exposes a binding direction θ<sub>i</sub>(m) = φ<sub>i</sub> + m·twist.
-        Crosslinks gate by angular alignment with the neighbor's hex direction.
+        Crosslinks gate by angular alignment with the neighbor direction.
       </p>
 
       <div class="equation">
-        <strong>Discrete-12:</strong> bead m of filament i exposes D[(m+s<sub>i</sub>) mod 12]; (i,m)↔(j,m) allowed iff i shows direction k and j shows k+3.<br>
+        <strong>Discrete-12:</strong> bead m of filament i exposes D[(m+s<sub>i</sub>) mod 12]; neighbor directions use the nearest active 12-state face and its opposite.<br>
         <strong>Continuous angular:</strong> θ<sub>i</sub>(m) = phaseOffset + φ<sub>i</sub> + handedness · twist · m.
-        Score = soft<sup>p</sup>(|θ<sub>i</sub>(m)−60°k|) · soft<sup>p</sup>(|θ<sub>j</sub>(m)−60°(k+3)|), gated by ±threshold.
+        Score = soft<sup>p</sup>(|θ<sub>i</sub>(m)−α<sub>k</sub>|) · soft<sup>p</sup>(|θ<sub>j</sub>(m)−(α<sub>k</sub>+180°)|), gated by ±threshold.
         MC samples φ<sub>i</sub> continuously.
       </div>
 
       <h2>Bundle</h2>
-      <div class="control"><label>Hex rings <span id="ringsVal"></span></label><input id="rings" type="range" min="1" max="6" step="1" value="2" /></div>
+      <div class="control">
+        <label>Lattice</label>
+        <select id="latticeGeometry">
+          <option value="hex">Hexagonal</option>
+          <option value="square">Square</option>
+        </select>
+      </div>
+      <div class="control"><label>Lattice radius <span id="ringsVal"></span></label><input id="rings" type="range" min="1" max="6" step="1" value="2" /></div>
       <div class="control"><label>Monomers / filament <span id="monomersVal"></span></label><input id="monomers" type="range" min="24" max="400" step="4" value="96" /></div>
       <div class="control"><label>Lattice spacing a (nm) <span id="aVal"></span></label><input id="a" type="range" min="8" max="45" step="0.5" value="11.0" /></div>
       <div class="control"><label>Bead spacing b (nm, axial) <span id="bVal"></span></label><input id="b" type="range" min="2.0" max="3.5" step="0.05" value="2.75" /></div>

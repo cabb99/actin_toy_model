@@ -1,5 +1,6 @@
 import { KBT_PN_NM, actinKtheta } from "../model/constants";
 import { presetFor } from "../model/abp";
+import { filamentCountForLattice } from "../model/hex";
 import type { AbpType, Params } from "../model/types";
 
 export const controlIds = [
@@ -32,6 +33,7 @@ export const controlIds = [
 ] as const;
 
 export const selectIds = [
+  "latticeGeometry",
   "helicityMode",
   "helicityHandedness",
   "registryMode",
@@ -102,6 +104,7 @@ export function readParams(params: Params, refs: Pick<DomRefs, "controls" | "sel
   params.bendKAngle = 10 ** params.bendKAngleLog10;
   params.sigma = Math.max(2.0, (params.a || 1) * 0.55);
   params.drag = 0.96;
+  params.latticeGeometry = refs.selects.latticeGeometry.value as Params["latticeGeometry"];
   params.helicityMode = refs.selects.helicityMode.value as Params["helicityMode"];
   params.helicityHandedness = Number(refs.selects.helicityHandedness.value) === -1 ? -1 : 1;
   params.registryMode = refs.selects.registryMode.value as Params["registryMode"];
@@ -114,8 +117,13 @@ export function updateLabels(params: Params, controls: Controls, values: ValueLa
   const monomersLive = Math.round(Number(controls.monomers.value));
   const bLive = Number(controls.b.value);
   const aLive = Number(controls.a.value);
+  const filamentCount = filamentCountForLattice(params.latticeGeometry, ringsLive);
+  const squareSide = 2 * ringsLive + 1;
 
-  values.rings.textContent = `${ringsLive} (${1 + 3 * ringsLive * (ringsLive + 1)} filaments)`;
+  values.rings.textContent =
+    params.latticeGeometry === "square"
+      ? `${ringsLive} (${filamentCount} filaments, ${squareSide}x${squareSide})`
+      : `${ringsLive} (${filamentCount} filaments)`;
   values.monomers.textContent = monomersLive.toString();
   values.b.textContent = bLive.toFixed(2);
   values.a.textContent = aLive.toFixed(1);

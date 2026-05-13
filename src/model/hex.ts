@@ -1,5 +1,5 @@
 import { PHASE_LEN, PHASE_TO_K } from "./constants";
-import type { Filament, Params, Vec2 } from "./types";
+import type { Filament, LatticeGeometry, Params, Vec2 } from "./types";
 
 export function axialToXY(q: number, r: number, a: number): Vec2 {
   return {
@@ -15,6 +15,17 @@ export function exposedK(m: number, s: number): number | null {
 
 export function defaultRegistry(q: number, r: number): number {
   return ((q + 2 * r) % PHASE_LEN + PHASE_LEN) % PHASE_LEN;
+}
+
+export function defaultLatticeRegistry(q: number, r: number, lattice: LatticeGeometry): number {
+  if (lattice === "square") return ((q + r) % PHASE_LEN + PHASE_LEN) % PHASE_LEN;
+  return defaultRegistry(q, r);
+}
+
+export function filamentCountForLattice(lattice: LatticeGeometry, rings: number): number {
+  const R = Math.max(0, Math.round(rings));
+  if (lattice === "square") return (2 * R + 1) ** 2;
+  return 1 + 3 * R * (R + 1);
 }
 
 export function wrapDeg360(deg: number): number {
@@ -40,6 +51,23 @@ export function hexDirectionDeg(k: number): number {
 
 export function nearestHexDirectionK(angleDeg: number): number {
   return Math.round(wrapDeg360(angleDeg) / 60) % 6;
+}
+
+export function latticeDirectionDeg(lattice: LatticeGeometry, k: number): number {
+  if (lattice === "square") return wrapDeg360(k * 90);
+  return hexDirectionDeg(k);
+}
+
+export function oppositeLatticeDirectionDeg(lattice: LatticeGeometry, k: number): number {
+  return wrapDeg360(latticeDirectionDeg(lattice, k) + 180);
+}
+
+export function latticeDirectionFaceK(lattice: LatticeGeometry, k: number): number {
+  return nearestHexDirectionK(latticeDirectionDeg(lattice, k));
+}
+
+export function oppositeLatticeDirectionFaceK(lattice: LatticeGeometry, k: number): number {
+  return nearestHexDirectionK(oppositeLatticeDirectionDeg(lattice, k));
 }
 
 export function monomerExposedAngleDeg(m: number, phaseDeg: number, params: Pick<

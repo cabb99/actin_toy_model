@@ -3,7 +3,7 @@
 ## Purpose
 
 This app is an interactive actin-bundle mechanical toy model. It simulates
-semiflexible actin bead-chain filaments on a hexagonal lattice, gates ABP
+semiflexible actin bead-chain filaments on a hexagonal or square lattice, gates ABP
 crosslink formation through filament helical phase compatibility, and visualizes
 bundle geometry plus mechanical readouts such as force response, effective
 bending modulus, and persistence-length consistency.
@@ -100,7 +100,7 @@ For physics changes, add a small deterministic unit test first using
 
 ## Current Physics Features
 
-- Hexagonal bundle lattice with configurable ring count and spacing.
+- Hexagonal or square bundle lattice with configurable radius and spacing.
 - Bead-chain filaments with harmonic bonds and angle-form bending energy.
 - 12-state helical face labels with compatible crosslink gating.
 - Registry modes: perfect, zero, random, and custom after Monte Carlo.

@@ -48,6 +48,43 @@ describe("topology", () => {
     expect(state.neighborPairs).toHaveLength(12);
   });
 
+  it("builds a centered square lattice with cardinal neighbor pairs", () => {
+    const params = smallParams({ latticeGeometry: "square", rings: 2, a: 10, sat: 0 });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(43), false);
+
+    expect(state.filaments).toHaveLength(25);
+    expect(state.neighborPairs).toHaveLength(40);
+    expect(new Set(state.neighborPairs.map(([, , k]) => k))).toEqual(new Set([0, 1]));
+    expect(state.filaments).toContainEqual(
+      expect.objectContaining({ q: 2, r: 2, x: 20, y: 20 }),
+    );
+    for (const [fi, fj] of state.neighborPairs) {
+      const a = state.filaments[fi];
+      const b = state.filaments[fj];
+      expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeCloseTo(params.a, 9);
+    }
+  });
+
+  it("uses cardinal square angles for continuous compatibility", () => {
+    const params = smallParams({
+      latticeGeometry: "square",
+      helicityMode: "continuous",
+      actinTwistDeg: 0,
+      helicityAngleThresholdDeg: 0,
+      compatibilitySharpness: 0,
+    });
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(44), false);
+    state.neighborPairs = [[0, 1, 1]];
+    state.filaments[0].phaseDeg = 90;
+    state.filaments[1].phaseDeg = 270;
+
+    expect(compatibleAt(state, params, 0, 1, 1, 0)).toBe(true);
+    state.filaments[0].phaseDeg = 60;
+    expect(compatibleAt(state, params, 0, 1, 1, 0)).toBe(false);
+  });
+
   it("scores compatible registry sites and respects saturation zero", () => {
     const params = smallParams({ sat: 0 });
     const state = preparedTwoFilamentState(params);

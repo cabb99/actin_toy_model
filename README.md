@@ -49,7 +49,7 @@ layer, a mutable simulation layer, browser/rendering adapters, and tests.
 
 ## Implemented Today
 
-- Hexagonal actin-bundle lattice generation with configurable ring count,
+- Hexagonal or square actin-bundle lattice generation with configurable radius,
   monomer count, lattice spacing, and axial bead spacing.
 - Bead-chain filament mechanics: harmonic bonds, angle-form bending, steric
   repulsion, damping/noise integration, and manual kicks.

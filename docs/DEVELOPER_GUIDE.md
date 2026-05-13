@@ -73,7 +73,7 @@ Use this as the quick “is it already here?” checklist.
 
 | Capability | Main place to look |
 | --- | --- |
-| Hexagonal filament lattice | `src/simulation/topology.ts`, `src/model/hex.ts` |
+| Hexagonal or square filament lattice | `src/simulation/topology.ts`, `src/model/hex.ts` |
 | 12-state helical face labels | `src/model/constants.ts`, `src/model/hex.ts` |
 | Face-compatible crosslink gating | `compatibleAt` and `buildCrosslinks` in `src/simulation/topology.ts` |
 | Registry modes | `assignRegistries` in `src/simulation/topology.ts` |
