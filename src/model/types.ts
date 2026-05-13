@@ -189,6 +189,7 @@ export interface ViewState {
 
 export interface DisplayState {
   showFaces: boolean;
+  showFaceArrows: boolean;
   showRegistry: boolean;
   showFilaments: boolean;
 }

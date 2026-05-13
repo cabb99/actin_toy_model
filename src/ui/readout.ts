@@ -6,7 +6,7 @@ import { angleCssColor, angleLegendStops, faceCssColor, registryCssColor } from 
 import { scoreRegistries } from "../simulation/registry";
 
 export function renderLegend(legend: HTMLElement, state: SimulationState, params: Params): void {
-  if (!state.display.showFaces && !state.display.showRegistry) {
+  if (!state.display.showFaces && !state.display.showFaceArrows && !state.display.showRegistry) {
     legend.innerHTML = "";
     legend.style.display = "none";
     return;
@@ -26,12 +26,17 @@ export function renderLegend(legend: HTMLElement, state: SimulationState, params
     params.helicityMode === "continuous"
       ? "Registry color follows the continuous phase angle."
       : "Registry color follows the 12-state phase angle.";
+  const arrowCopy =
+    params.helicityMode === "continuous"
+      ? "Face arrows are 2 nm markers at the exact helical face angle."
+      : "Face arrows are 2 nm markers on active 12-state faces.";
   let html = "<strong>Angle color</strong><br>";
   html += `<div class="angle-ramp" style="background:linear-gradient(90deg, ${rampStops})"></div>`;
   html += '<div class="angle-labels"><span>0°</span><span>120°</span><span>240°</span><span>360°</span></div>';
   html += `<div class="legend-section"><strong>Directions</strong><br>${labels}</div>`;
   if (state.display.showRegistry) html += `<div class="legend-note">${registryCopy}</div>`;
   if (state.display.showFaces) html += `<div class="legend-note">${faceCopy}</div>`;
+  if (state.display.showFaceArrows) html += `<div class="legend-note">${arrowCopy}</div>`;
   legend.innerHTML = html;
 }
 

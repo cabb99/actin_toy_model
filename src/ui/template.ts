@@ -103,8 +103,9 @@ export const APP_HTML = String.raw`
       <div id="sweepTable" class="sweep-table"><em>No data - click "Sweep angle → CSV" to generate.</em></div>
 
       <h2>Display</h2>
-      <div class="buttons three">
+      <div class="buttons">
         <button id="faceToggle" class="toggle">Faces</button>
+        <button id="faceArrowToggle" class="toggle">Face arrows</button>
         <button id="registryToggle" class="toggle">Registry</button>
         <button id="ghostToggle" class="toggle on">Filaments</button>
       </div>

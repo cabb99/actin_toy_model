@@ -64,6 +64,21 @@ export function displayedFaceK(
   return exposedK(m, filament.s);
 }
 
+export function displayedFaceAngleDeg(
+  m: number,
+  filament: Filament,
+  params: Pick<
+    Params,
+    "helicityMode" | "actinTwistDeg" | "helicityHandedness" | "helicityPhaseOffsetDeg"
+  >,
+): number | null {
+  if (params.helicityMode === "continuous") {
+    return monomerExposedAngleDeg(m, filament.phaseDeg, params);
+  }
+  const k = exposedK(m, filament.s);
+  return k === null ? null : hexDirectionDeg(k);
+}
+
 export function softAngularScore(
   mismatchDeg: number,
   thresholdDeg: number,

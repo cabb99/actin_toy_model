@@ -5,6 +5,7 @@ import {
   axialToXY,
   clampAngleThresholdDeg,
   defaultRegistry,
+  displayedFaceAngleDeg,
   displayedFaceK,
   exposedK,
   nearestHexDirectionK,
@@ -104,6 +105,14 @@ describe("hex and phase model", () => {
 
     const filament = { id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 61 };
     expect(displayedFaceK(0, filament, continuousParams)).toBe(1);
+  });
+
+  it("exposes physical face angles for radial face markers", () => {
+    const filament = { id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 61 };
+
+    expect(displayedFaceAngleDeg(4, filament, discreteParams)).toBe(60);
+    expect(displayedFaceAngleDeg(2, filament, discreteParams)).toBeNull();
+    expect(displayedFaceAngleDeg(1, filament, continuousParams)).toBeCloseTo(227.15);
   });
 
   it("keeps face colors on the same angular palette as the shared face helper", () => {

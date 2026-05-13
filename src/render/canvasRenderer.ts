@@ -1,11 +1,14 @@
 import type { BeadMeta, Params, ProjectedPoint, Renderer, SimulationState, Vec3 } from "../model/types";
-import { displayedFaceK } from "../model/hex";
+import { displayedFaceAngleDeg, displayedFaceK } from "../model/hex";
 import { defaultView } from "../simulation/state";
 import { clamp, faceCssColor, registryCssColor, registryHue } from "./color";
+
+const FACE_ARROW_LENGTH_NM = 2;
 
 type DrawObject =
   | { type: "crosslink"; z: number; a: ProjectedPoint; b: ProjectedPoint }
   | { type: "bond"; z: number; a: ProjectedPoint; b: ProjectedPoint; color: string }
+  | { type: "faceArrow"; z: number; a: ProjectedPoint; b: ProjectedPoint; color: string }
   | { type: "bead"; z: number; p: ProjectedPoint; bead: BeadMeta; idx: number };
 
 export class CanvasRenderer implements Renderer {
@@ -129,6 +132,29 @@ export class CanvasRenderer implements Renderer {
       }
     }
 
+    if (this.state.display.showFaceArrows) {
+      for (const bead of this.state.beads) {
+        if (bead.isInternal) continue;
+        const filament = this.state.filaments[bead.f];
+        const angleDeg = displayedFaceAngleDeg(bead.m, filament, this.params);
+        if (angleDeg === null) continue;
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const a = this.project(bead);
+        const b = this.project({
+          x: bead.x + FACE_ARROW_LENGTH_NM * Math.cos(angleRad),
+          y: bead.y + FACE_ARROW_LENGTH_NM * Math.sin(angleRad),
+          z: bead.z,
+        });
+        objects.push({
+          type: "faceArrow",
+          z: 0.5 * (a.z + b.z),
+          a,
+          b,
+          color: `hsla(${angleDeg.toFixed(0)}, 78%, 70%, 0.9)`,
+        });
+      }
+    }
+
     for (let i = 0; i < projected.length; i++) {
       objects.push({ type: "bead", z: projected[i].z, p: projected[i], bead: this.state.beads[i], idx: i });
     }
@@ -144,6 +170,11 @@ export class CanvasRenderer implements Renderer {
         this.ctx.strokeStyle = obj.color;
         this.ctx.lineWidth = 1.6;
         this.line(obj.a, obj.b);
+      } else if (obj.type === "faceArrow") {
+        this.ctx.strokeStyle = obj.color;
+        this.ctx.fillStyle = obj.color;
+        this.ctx.lineWidth = 1.15;
+        this.arrow(obj.a, obj.b);
       } else {
         const radius = obj.idx === this.state.grabbedBead ? 5.2 : 2.7;
         this.ctx.fillStyle = this.beadColor(obj.bead);
@@ -161,6 +192,24 @@ export class CanvasRenderer implements Renderer {
     this.ctx.moveTo(a.x, a.y);
     this.ctx.lineTo(b.x, b.y);
     this.ctx.stroke();
+  }
+
+  private arrow(a: ProjectedPoint, b: ProjectedPoint): void {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    this.line(a, b);
+    if (len < 1) return;
+
+    const headLength = clamp(len * 0.45, 2.2, 5.0);
+    const angle = Math.atan2(dy, dx);
+    const spread = Math.PI / 6;
+    this.ctx.beginPath();
+    this.ctx.moveTo(b.x, b.y);
+    this.ctx.lineTo(b.x - headLength * Math.cos(angle - spread), b.y - headLength * Math.sin(angle - spread));
+    this.ctx.lineTo(b.x - headLength * Math.cos(angle + spread), b.y - headLength * Math.sin(angle + spread));
+    this.ctx.closePath();
+    this.ctx.fill();
   }
 
   private beadColor(p: BeadMeta): string {

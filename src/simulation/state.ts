@@ -52,7 +52,7 @@ export function createSimulationState(): SimulationState {
       bendDir: { x: 1, y: 0, z: 0 },
     },
     view: { ...defaultView, zoom: 4.2, panX: 0, panY: 0 },
-    display: { showFaces: false, showRegistry: false, showFilaments: true },
+    display: { showFaces: false, showFaceArrows: false, showRegistry: false, showFilaments: true },
     helicity: {
       compatibleSites: 0,
       incompatibleSites: 0,

@@ -192,6 +192,7 @@ function toggleBtn(id: string, key: keyof typeof state.display): void {
   });
 }
 toggleBtn("faceToggle", "showFaces");
+toggleBtn("faceArrowToggle", "showFaceArrows");
 toggleBtn("registryToggle", "showRegistry");
 toggleBtn("ghostToggle", "showFilaments");
 
