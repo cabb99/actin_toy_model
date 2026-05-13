@@ -67,12 +67,13 @@ function selectedFilamentInfo(state: SimulationState, params: Params): string {
 }
 
 export function renderLegend(legend: HTMLElement, state: SimulationState, params: Params): void {
+  const frame = legend.closest<HTMLElement>(".legend-frame") ?? legend;
   if (!state.display.showFaces && !state.display.showFaceArrows && !state.display.showRegistry) {
     legend.innerHTML = "";
-    legend.style.display = "none";
+    frame.style.display = "none";
     return;
   }
-  legend.style.display = "block";
+  frame.style.display = "";
   const labels = angleLegendStops()
     .map(({ angleDeg, color }) => `<span class="swatch" style="background:${color}"></span>${angleDeg.toFixed(0)}°`)
     .join("<br>");

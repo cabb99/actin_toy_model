@@ -24,6 +24,8 @@ function smallParams(overrides: Partial<Params> = {}): Params {
     sat: 1,
     temp: 0,
     steps: 1,
+    helicityMode: "discrete12",
+    helicityHandedness: 1,
     ...overrides,
   };
 }

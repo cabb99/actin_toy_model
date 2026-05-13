@@ -1,7 +1,9 @@
 import "./styles.css";
 import { defaultParams } from "./model/constants";
+import { displayedFaceAngleDeg } from "./model/hex";
 import type { AbpType } from "./model/types";
 import { CanvasRenderer } from "./render/canvasRenderer";
+import { angleCssColor } from "./render/color";
 import { computeForces, kick, step } from "./simulation/forces";
 import { createMathRng } from "./simulation/random";
 import { runMonteCarlo, scoreRegistries, type MonteCarloSample } from "./simulation/registry";
@@ -448,6 +450,8 @@ refs.canvas.addEventListener("pointermove", (ev) => {
 
 refs.canvas.addEventListener("pointerup", releaseInteraction);
 refs.canvas.addEventListener("pointercancel", releaseInteraction);
+refs.canvas.addEventListener("pointermove", updateHoverTooltip);
+refs.canvas.addEventListener("pointerleave", hideHoverTooltip);
 
 refs.canvas.addEventListener(
   "wheel",
@@ -462,6 +466,81 @@ refs.canvas.addEventListener(
 window.addEventListener("resize", () => {
   renderer.resize();
   renderer.fitView(false);
+});
+
+document.querySelectorAll<HTMLButtonElement>(".panel-collapse").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const frame = btn.closest<HTMLElement>(".panel-frame");
+    if (!frame) return;
+    const collapsed = frame.classList.toggle("collapsed");
+    btn.textContent = collapsed ? "+" : "−";
+    btn.setAttribute("aria-label", collapsed ? "Expand panel" : "Collapse panel");
+    btn.title = collapsed ? "Expand" : "Collapse";
+  });
+});
+
+const hoverInfo = document.getElementById("hoverInfo") as HTMLElement | null;
+const HOVER_PICK_RADIUS_PX = 18;
+
+function updateHoverTooltip(ev: PointerEvent): void {
+  if (!hoverInfo) return;
+  if (ev.pointerType !== "mouse" || dragging || state.grabbedBead >= 0) {
+    hoverInfo.hidden = true;
+    return;
+  }
+  const rect = refs.canvas.getBoundingClientRect();
+  const mx = ev.clientX - rect.left;
+  const my = ev.clientY - rect.top;
+  const idx = pickBeadAt(mx, my, HOVER_PICK_RADIUS_PX);
+  if (idx < 0) {
+    hoverInfo.hidden = true;
+    return;
+  }
+  const bead = state.beads[idx];
+  if (bead.f < 0 || bead.isInternal) {
+    // ABP-internal bead — no registry angle to show.
+    hoverInfo.hidden = true;
+    return;
+  }
+  const filament = state.filaments[bead.f];
+  const angle = displayedFaceAngleDeg(bead.m, filament, params);
+  const filamentRegistry = params.helicityMode === "continuous"
+    ? `φ ${filament.phaseDeg.toFixed(1)}°`
+    : `s ${filament.s}`;
+  const filamentSwatch = angleCssColor(
+    params.helicityMode === "continuous" ? filament.phaseDeg : (filament.s * 360) / 12,
+  );
+  const angleStr = angle === null ? "—" : `${angle.toFixed(1)}°`;
+  const monomerSwatch = angle === null ? "transparent" : angleCssColor(angle);
+  hoverInfo.innerHTML =
+    `<div><span class="swatch" style="background:${filamentSwatch}"></span>` +
+    `<strong>filament ${bead.f}</strong> · ${filamentRegistry}</div>` +
+    `<div><span class="swatch" style="background:${monomerSwatch}"></span>` +
+    `<strong>m ${bead.m}</strong> · θ ${angleStr}</div>`;
+  hoverInfo.style.left = `${mx}px`;
+  hoverInfo.style.top = `${my}px`;
+  hoverInfo.hidden = false;
+}
+
+function hideHoverTooltip(): void {
+  if (hoverInfo) hoverInfo.hidden = true;
+}
+
+const tabButtons = document.querySelectorAll<HTMLButtonElement>(".tabs .tab");
+const tabPanels = document.querySelectorAll<HTMLElement>(".tab-panel");
+tabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const target = btn.dataset.tab;
+    if (!target) return;
+    tabButtons.forEach((b) => {
+      const active = b === btn;
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    tabPanels.forEach((p) => {
+      p.hidden = p.dataset.panel !== target;
+    });
+  });
 });
 
 readStructuralParams(params, refs.controls);

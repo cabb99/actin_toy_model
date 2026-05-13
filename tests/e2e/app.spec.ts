@@ -79,6 +79,7 @@ test("controls update labels and display toggles stay stable", async ({ page }) 
 
 test("monte carlo switches registry mode to custom", async ({ page }) => {
   await page.goto("/");
+  await page.locator('.tabs .tab[data-tab="mc"]').click();
   await page.locator("#mcT0").evaluate((el) => {
     const input = el as HTMLInputElement;
     input.value = "12";
@@ -113,6 +114,11 @@ test("bend sweep populates the table and downloads csv", async ({ page }) => {
     const input = el as HTMLInputElement;
     input.value = "24";
     input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  // Dynamics panel is hidden in the default UI but still mounted; expose it
+  // so the sweep button is actionable.
+  await page.locator('[data-panel="dynamics"]').evaluate((el) => {
+    (el as HTMLElement).hidden = false;
   });
   const downloadPromise = page.waitForEvent("download");
   await page.locator("#sweepBtn").click();
