@@ -110,6 +110,12 @@ export const APP_HTML = String.raw`
       <div id="sweepTable" class="sweep-table"><em>No data - click "Sweep angle → CSV" to generate.</em></div>
 
       <h2>Display</h2>
+      <div class="control">
+        <label>Highlight filament</label>
+        <select id="highlightFilament">
+          <option value="-1">None</option>
+        </select>
+      </div>
       <div class="buttons">
         <button id="faceToggle" class="toggle">Faces</button>
         <button id="faceArrowToggle" class="toggle">Face arrows</button>
@@ -119,7 +125,7 @@ export const APP_HTML = String.raw`
 
       <h2>Run</h2>
       <div class="buttons">
-        <button id="pauseBtn">Pause</button>
+        <button id="pauseBtn">Resume</button>
         <button id="kickBtn">Kick</button>
         <button id="straightBtn" class="full">Reset straight bundle</button>
         <button id="randomBtn" class="full">Reset with transverse disorder</button>

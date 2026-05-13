@@ -42,10 +42,31 @@ function rebuildCrosslinkTopology(): void {
   renderer.markColorsDirty();
 }
 
+function syncFilamentSelect(): void {
+  const selected = state.filaments.some((f) => f.id === state.display.highlightedFilamentId)
+    ? state.display.highlightedFilamentId
+    : -1;
+  state.display.highlightedFilamentId = selected;
+
+  const none = document.createElement("option");
+  none.value = "-1";
+  none.textContent = "None";
+  const options = [none];
+  for (const f of state.filaments) {
+    const option = document.createElement("option");
+    option.value = f.id.toString();
+    option.textContent = `Filament ${f.id} (q=${f.q}, r=${f.r})`;
+    options.push(option);
+  }
+  refs.filamentSelect.replaceChildren(...options);
+  refs.filamentSelect.value = selected.toString();
+}
+
 function reset(randomize = false): void {
   readStructuralParams(params, refs.controls);
   commitLiveParams();
   resetSystem(state, params, rng, randomize);
+  syncFilamentSelect();
   renderer.rebuildTopology();
   renderer.fitView(true);
 }
@@ -130,6 +151,11 @@ refs.selects.perturbMode.addEventListener("change", () => {
   applyPerturbationConstraints(state, params);
 });
 
+refs.filamentSelect.addEventListener("change", () => {
+  state.display.highlightedFilamentId = Number(refs.filamentSelect.value);
+  renderer.markColorsDirty();
+});
+
 document.getElementById("rebuildBtn")?.addEventListener("click", () => rebuildCrosslinkTopology());
 
 let mcRunning = false;
@@ -184,7 +210,9 @@ document.getElementById("clearCsvBtn")?.addEventListener("click", () => {
   renderSweepTable(refs.sweepTable, []);
 });
 
-function toggleBtn(id: string, key: keyof typeof state.display): void {
+type DisplayToggleKey = "showFaces" | "showFaceArrows" | "showRegistry" | "showFilaments";
+
+function toggleBtn(id: string, key: DisplayToggleKey): void {
   const btn = document.getElementById(id);
   btn?.addEventListener("click", () => {
     state.display[key] = !state.display[key];

@@ -5,6 +5,7 @@ import { computeForces } from "../../src/simulation/forces";
 import { createSeededRng } from "../../src/simulation/random";
 import { runMonteCarlo, scoreRegistries } from "../../src/simulation/registry";
 import { createSimulationState } from "../../src/simulation/state";
+import { filamentCrosslinkMonomers } from "../../src/ui/readout";
 import {
   angleDegAtB,
   applyPerturbationConstraints,
@@ -102,6 +103,16 @@ describe("topology", () => {
     expect(state.beads.filter((b) => b.isInternal)).toHaveLength(0);
   });
 
+  it("reports crosslink monomers attached to a selected filament", () => {
+    const params = smallParams({ abpType: "fascin", sat: 1 });
+    const state = preparedTwoFilamentState(params);
+    buildCrosslinks(state, params, createSeededRng(32));
+
+    const monomers = filamentCrosslinkMonomers(state, 0);
+    expect(monomers).toHaveLength(2);
+    expect(monomers[1] - monomers[0]).toBeGreaterThanOrEqual(MIN_CROSSLINK_SPACING_MONOMERS);
+  });
+
   it("creates linker2 internal topology for CaMKII", () => {
     const params = smallParams({ abpType: "camkii", clDist: 22, sat: 1 });
     const state = preparedTwoFilamentState(params);
@@ -112,6 +123,7 @@ describe("topology", () => {
     expect(state.beads.filter((b) => b.isInternal)).toHaveLength(2);
     expect(state.bonds.length - bondsBefore).toBe(4);
     expect(state.bends.length - bendsBefore).toBe(2);
+    expect(filamentCrosslinkMonomers(state, 0)).toHaveLength(2);
   });
 
   it("creates linker4 internal topology for actinin", () => {

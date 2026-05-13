@@ -194,6 +194,7 @@ export interface DisplayState {
   showFaceArrows: boolean;
   showRegistry: boolean;
   showFilaments: boolean;
+  highlightedFilamentId: number;
 }
 
 export interface RegistryScore {

@@ -53,6 +53,7 @@ export interface DomRefs {
   readout: HTMLElement;
   legend: HTMLElement;
   sweepTable: HTMLElement;
+  filamentSelect: HTMLSelectElement;
   controls: Controls;
   values: ValueLabels;
   selects: Selects;
@@ -81,6 +82,7 @@ export function getDomRefs(): DomRefs {
     readout: requireElement("readout", HTMLElement),
     legend: requireElement("legend", HTMLElement),
     sweepTable: requireElement("sweepTable", HTMLElement),
+    filamentSelect: requireElement("highlightFilament", HTMLSelectElement),
     controls,
     values,
     selects,

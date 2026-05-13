@@ -9,6 +9,8 @@ test("loads the app and paints the canvas", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Actin bundle toy model" })).toBeVisible();
   await expect(page.locator("#readout")).toContainText("filaments", { timeout: 10_000 });
+  await expect(page.locator("#readout")).toContainText("paused");
+  await expect(page.locator("#pauseBtn")).toContainText("Resume");
 
   const nonBlank = await page.locator("#canvas").evaluate((canvas) => {
     const c = canvas as HTMLCanvasElement;
@@ -49,6 +51,9 @@ test("controls update labels and display toggles stay stable", async ({ page }) 
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await expect(page.locator("#bendKAngleLog10Val")).toContainText("1.00e+4");
+
+  await page.locator("#highlightFilament").selectOption("0");
+  await expect(page.locator("#readout")).toContainText("selected filament 0");
 });
 
 test("monte carlo switches registry mode to custom", async ({ page }) => {

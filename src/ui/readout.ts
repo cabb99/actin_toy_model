@@ -5,6 +5,58 @@ import type { Params, SimulationState, SweepSample } from "../model/types";
 import { angleCssColor, angleLegendStops, faceCssColor, registryCssColor } from "../render/color";
 import { scoreRegistries } from "../simulation/registry";
 
+export function filamentCrosslinkMonomers(state: SimulationState, filamentId: number): number[] {
+  if (filamentId < 0) return [];
+  const monomers = new Set<number>();
+
+  for (const [ia, ib] of state.crosslinks) {
+    const a = state.beads[ia];
+    const b = state.beads[ib];
+    if (a?.f === filamentId && a.m >= 0) monomers.add(a.m);
+    if (b?.f === filamentId && b.m >= 0) monomers.add(b.m);
+  }
+
+  for (let i = state.nBackboneBonds; i < state.bonds.length; i++) {
+    const [ia, ib] = state.bonds[i];
+    const a = state.beads[ia];
+    const b = state.beads[ib];
+    if (a?.f === filamentId && a.m >= 0) monomers.add(a.m);
+    if (b?.f === filamentId && b.m >= 0) monomers.add(b.m);
+  }
+
+  return [...monomers].sort((a, b) => a - b);
+}
+
+function compactNumberList(values: number[], maxItems = 24): string {
+  if (values.length <= maxItems) return values.join(", ");
+  const head = values.slice(0, maxItems).join(", ");
+  return `${head}, ...`;
+}
+
+function selectedFilamentInfo(state: SimulationState, params: Params): string {
+  const filamentId = state.display.highlightedFilamentId;
+  if (filamentId < 0) return "";
+  const filament = state.filaments[filamentId];
+  if (!filament) return "";
+
+  const monomers = filamentCrosslinkMonomers(state, filamentId);
+  if (!monomers.length) {
+    return `<br>selected filament ${filamentId} (q=${filament.q}, r=${filament.r}): no crosslinks`;
+  }
+
+  const spacingMonomers = monomers.slice(1).map((m, i) => m - monomers[i]);
+  const spacingNm = spacingMonomers.map((dm) => dm * params.b);
+  const spacingCopy = spacingMonomers.length
+    ? ` · spacing Δm=${compactNumberList(spacingMonomers)} (${compactNumberList(
+        spacingNm.map((v) => Number(v.toFixed(1))),
+      )} nm)`
+    : "";
+
+  return `<br>selected filament ${filamentId} (q=${filament.q}, r=${filament.r}): ${
+    monomers.length
+  } crosslink site${monomers.length === 1 ? "" : "s"} · m=${compactNumberList(monomers)}${spacingCopy}`;
+}
+
 export function renderLegend(legend: HTMLElement, state: SimulationState, params: Params): void {
   if (!state.display.showFaces && !state.display.showFaceArrows && !state.display.showRegistry) {
     legend.innerHTML = "";
@@ -46,6 +98,7 @@ export function renderReadout(readout: HTMLElement, state: SimulationState, para
   const sc = scoreRegistries(state, params);
   const zeroPairs = sc.zero;
   const status = state.running ? "running" : "paused";
+  const filamentInfo = selectedFilamentInfo(state, params);
 
   const grabF = (() => {
     if (state.grabbedBead < 0) return null;
@@ -84,6 +137,7 @@ export function renderReadout(readout: HTMLElement, state: SimulationState, para
     ABP: ${currentAbpEffective(params).label} · L₀=${params.clDist.toFixed(1)} nm · k<sub>cl</sub>=${params.kcl.toFixed(0)} pN/nm<br>
     contour ${((params.monomers - 1) * params.b).toFixed(0)} nm
     · 12-pitch ${(12 * params.b).toFixed(1)} nm
+    ${filamentInfo}
     ${bendInfo}${eiInfo}
     ${grabF !== null ? `<br>grab F: ${grabF.toFixed(2)} pN` : ""}
     <br><span style="color:${total > 1e6 ? "var(--bad)" : "var(--muted)"}">U = ${total.toFixed(0)} pN·nm</span>
