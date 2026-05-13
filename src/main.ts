@@ -4,7 +4,7 @@ import type { AbpType } from "./model/types";
 import { CanvasRenderer } from "./render/canvasRenderer";
 import { computeForces, kick, step } from "./simulation/forces";
 import { createMathRng } from "./simulation/random";
-import { runMonteCarlo, scoreRegistries } from "./simulation/registry";
+import { runMonteCarlo, scoreRegistries, type MonteCarloSample } from "./simulation/registry";
 import { createSimulationState } from "./simulation/state";
 import { applyPerturbationConstraints, assignRegistries, buildCrosslinks, resetSystem } from "./simulation/topology";
 import { sweepBend } from "./simulation/sweep";
@@ -26,6 +26,7 @@ const params = defaultParams();
 const state = createSimulationState();
 const rng = createMathRng();
 const renderer = new CanvasRenderer(refs.canvas, state, params);
+const mcGraph = document.getElementById("mcGraph");
 
 function refreshLabels(): void {
   updateLabels(params, refs.controls, refs.values);
@@ -40,6 +41,64 @@ function rebuildCrosslinkTopology(): void {
   buildCrosslinks(state, params, rng);
   renderer.rebuildTopology();
   renderer.markColorsDirty();
+}
+
+function renderMcGraph(samples: MonteCarloSample[], status = "Run Monte Carlo to plot connections vs temperature."): void {
+  if (!mcGraph) return;
+  const plotted = samples.filter((s) => s.iteration > 0);
+  if (!plotted.length) {
+    mcGraph.innerHTML = `<div class="mc-graph-empty">${status}</div>`;
+    return;
+  }
+
+  const width = 320;
+  const height = 150;
+  const pad = { left: 42, right: 14, top: 18, bottom: 34 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const temps = plotted.map((s) => Math.max(1e-9, s.temperature));
+  const minLogT = Math.log(Math.min(...temps));
+  const maxLogT = Math.log(Math.max(...temps));
+  const maxConnections = Math.max(1, ...plotted.map((s) => s.connections));
+  const latest = plotted[plotted.length - 1];
+  const best = plotted.reduce((m, s) => Math.max(m, s.bestConnections), 0);
+  const xFor = (temperature: number): number => {
+    if (Math.abs(maxLogT - minLogT) < 1e-12) return pad.left;
+    const t = (maxLogT - Math.log(Math.max(1e-9, temperature))) / (maxLogT - minLogT);
+    return pad.left + t * plotW;
+  };
+  const yFor = (connections: number): number => pad.top + plotH - (connections / maxConnections) * plotH;
+  const points = plotted.map((s) => `${xFor(s.temperature).toFixed(1)},${yFor(s.connections).toFixed(1)}`).join(" ");
+  const bestPoints = plotted
+    .map((s) => `${xFor(s.temperature).toFixed(1)},${yFor(s.bestConnections).toFixed(1)}`)
+    .join(" ");
+  const minT = Math.min(...temps);
+  const maxT = Math.max(...temps);
+
+  mcGraph.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Monte Carlo connections versus temperature">
+      <rect x="0" y="0" width="${width}" height="${height}" fill="rgba(13,17,23,0.20)" />
+      <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="rgba(157,167,179,0.65)" />
+      <line x1="${pad.left}" y1="${pad.top + plotH}" x2="${pad.left + plotW}" y2="${pad.top + plotH}" stroke="rgba(157,167,179,0.65)" />
+      <polyline points="${bestPoints}" fill="none" stroke="rgba(86,211,100,0.65)" stroke-width="1.4" stroke-dasharray="4 3" />
+      <polyline points="${points}" fill="none" stroke="rgba(88,166,255,0.95)" stroke-width="2" />
+      <circle cx="${xFor(latest.temperature).toFixed(1)}" cy="${yFor(latest.connections).toFixed(1)}" r="2.8" fill="rgba(88,166,255,1)" />
+      <text x="${pad.left}" y="12" fill="rgba(230,237,243,0.92)" font-size="10.5">${status}</text>
+      <text x="${pad.left + 3}" y="${pad.top + 10}" fill="rgba(157,167,179,0.9)" font-size="9">${maxConnections}</text>
+      <text x="${pad.left + 3}" y="${pad.top + plotH - 3}" fill="rgba(157,167,179,0.9)" font-size="9">0</text>
+      <text x="${pad.left}" y="${height - 9}" fill="rgba(157,167,179,0.9)" font-size="9">T ${maxT.toPrecision(2)}</text>
+      <text x="${pad.left + plotW}" y="${height - 9}" fill="rgba(157,167,179,0.9)" font-size="9" text-anchor="end">T ${minT.toPrecision(2)}</text>
+      <text x="${pad.left + plotW / 2}" y="${height - 9}" fill="rgba(201,215,231,0.9)" font-size="10" text-anchor="middle">Temperature</text>
+      <text x="12" y="${pad.top + plotH / 2}" fill="rgba(201,215,231,0.9)" font-size="10" transform="rotate(-90 12 ${pad.top + plotH / 2})" text-anchor="middle">Connections</text>
+      <text x="${pad.left}" y="${height - 21}" fill="rgba(88,166,255,0.95)" font-size="9">current ${latest.connections}</text>
+      <text x="${pad.left + plotW}" y="${height - 21}" fill="rgba(86,211,100,0.85)" font-size="9" text-anchor="end">best ${best}</text>
+    </svg>
+  `;
+}
+
+function mcRunStatus(label: string): string {
+  return `${label}: T ${params.mcT0.toFixed(2)} to ${params.mcT1.toFixed(3)}, ` +
+    `iters ${Math.round(params.mcIters)}, skew ${params.mcSkew.toFixed(2)}, sigma ${params.mcPhaseSigma0.toFixed(1)}`;
 }
 
 function syncFilamentSelect(): void {
@@ -66,6 +125,7 @@ function reset(randomize = false): void {
   readStructuralParams(params, refs.controls);
   commitLiveParams();
   resetSystem(state, params, rng, randomize);
+  renderMcGraph([]);
   syncFilamentSelect();
   renderer.rebuildTopology();
   renderer.fitView(true);
@@ -165,14 +225,24 @@ document.getElementById("mcBtn")?.addEventListener("click", async () => {
     return;
   }
   const btn = document.getElementById("mcBtn") as HTMLButtonElement;
+  commitLiveParams();
   const beforeText = btn.textContent ?? "Optimize registries (Monte Carlo)";
+  const samples: MonteCarloSample[] = [];
+  renderMcGraph(samples, mcRunStatus("Optimizing"));
   mcRunning = true;
   btn.disabled = true;
   btn.textContent = "Optimizing...";
   try {
     const before = scoreRegistries(state, params);
-    const after = await runMonteCarlo(state, params, rng, { onProgress: (msg) => console.log(msg) });
+    const after = await runMonteCarlo(state, params, rng, {
+      onProgress: (msg) => console.log(msg),
+      onSample: (sample) => {
+        samples.push(sample);
+        renderMcGraph(samples, mcRunStatus("Optimizing"));
+      },
+    });
     refs.selects.registryMode.value = "custom";
+    renderMcGraph(samples, mcRunStatus("Monte Carlo"));
     renderer.rebuildTopology();
     renderer.markColorsDirty();
     console.log(`MC: ${before.total} -> ${after.total} compatible sites`);

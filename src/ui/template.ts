@@ -66,6 +66,7 @@ export const APP_HTML = String.raw`
       <div class="control"><label>MC skew penalty <span id="mcSkewVal"></span></label><input id="mcSkew" type="range" min="0" max="1" step="0.01" value="0.15" /></div>
       <div class="control"><label>MC phase σ₀ (deg, continuous) <span id="mcPhaseSigma0Val"></span></label><input id="mcPhaseSigma0" type="range" min="1" max="90" step="0.5" value="30" /></div>
       <div class="buttons"><button id="mcBtn" class="full">Optimize registries (Monte Carlo)</button></div>
+      <div id="mcGraph" class="mc-graph"></div>
 
       <h2>Crosslinker (ABP)</h2>
       <div class="control">

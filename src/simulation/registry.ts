@@ -17,6 +17,17 @@ export interface MonteCarloOptions {
   skew?: number;
   yieldEvery?: number;
   onProgress?(message: string): void;
+  onSample?(sample: MonteCarloSample): void;
+}
+
+export interface MonteCarloSample {
+  iteration: number;
+  temperature: number;
+  connections: number;
+  bestConnections: number;
+  score: number;
+  bestScore: number;
+  acceptRate: number;
 }
 
 export async function runMonteCarlo(
@@ -48,6 +59,15 @@ export async function runMonteCarlo(
       `mode=${continuous ? "continuous" : "discrete12"} sigma0=${sigma0.toFixed(1)}° ` +
       `init score=${cur.total.toFixed(2)}`,
   );
+  opts.onSample?.({
+    iteration: 0,
+    temperature: T0,
+    connections: cur.count,
+    bestConnections: best.count,
+    score: cur.total,
+    bestScore: best.total,
+    acceptRate: 0,
+  });
 
   for (let it = 0; it < iters; it++) {
     const T = T0 * Math.pow(T1 / T0, it / iters);
@@ -123,6 +143,15 @@ export async function runMonteCarlo(
           `cur=${cur.total.toFixed(2)} best=${best.total.toFixed(2)} ` +
           `acc=${((accepts / (it + 1)) * 100).toFixed(1)}%`,
       );
+      opts.onSample?.({
+        iteration: it + 1,
+        temperature: T,
+        connections: cur.count,
+        bestConnections: best.count,
+        score: cur.total,
+        bestScore: best.total,
+        acceptRate: accepts / (it + 1),
+      });
     }
     if ((it + 1) % yieldEvery === 0) {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -140,6 +169,15 @@ export async function runMonteCarlo(
     `MC done - best score ${best.total.toFixed(2)} (${best.count} sites), ` +
       `empty pairs ${best.zero}/${best.pairs}, accept rate ${((accepts / iters) * 100).toFixed(1)}%`,
   );
+  opts.onSample?.({
+    iteration: iters,
+    temperature: T1,
+    connections: best.count,
+    bestConnections: best.count,
+    score: best.total,
+    bestScore: best.total,
+    acceptRate: accepts / iters,
+  });
 
   return best;
 }

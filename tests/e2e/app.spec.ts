@@ -79,6 +79,16 @@ test("controls update labels and display toggles stay stable", async ({ page }) 
 
 test("monte carlo switches registry mode to custom", async ({ page }) => {
   await page.goto("/");
+  await page.locator("#mcT0").evaluate((el) => {
+    const input = el as HTMLInputElement;
+    input.value = "12";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#mcT1").evaluate((el) => {
+    const input = el as HTMLInputElement;
+    input.value = "0.02";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   await page.locator("#mcIters").evaluate((el) => {
     const input = el as HTMLInputElement;
     input.value = "500";
@@ -86,6 +96,10 @@ test("monte carlo switches registry mode to custom", async ({ page }) => {
   });
   await page.locator("#mcBtn").click();
   await expect(page.locator("#registryMode")).toHaveValue("custom", { timeout: 20_000 });
+  await expect(page.locator("#mcGraph")).toContainText("Temperature");
+  await expect(page.locator("#mcGraph")).toContainText("Connections");
+  await expect(page.locator("#mcGraph")).toContainText("T 12.00 to 0.020");
+  await expect(page.locator("#mcGraph")).toContainText("iters 500");
 });
 
 test("bend sweep populates the table and downloads csv", async ({ page }) => {

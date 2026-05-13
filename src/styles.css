@@ -149,6 +149,29 @@ button.toggle.on {
 .buttons.three { grid-template-columns: 1fr 1fr 1fr; }
 .full { grid-column: 1 / -1; }
 
+.mc-graph {
+  margin-top: 8px;
+  min-height: 154px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(13, 17, 23, 0.34);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+
+.mc-graph svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mc-graph-empty {
+  padding: 10px;
+  line-height: 1.35;
+}
+
 .readout {
   position: absolute;
   right: 14px;
