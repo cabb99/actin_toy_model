@@ -5,7 +5,7 @@ import { computeForces } from "../../src/simulation/forces";
 import { createSeededRng } from "../../src/simulation/random";
 import { runMonteCarlo, scoreRegistries } from "../../src/simulation/registry";
 import { createSimulationState } from "../../src/simulation/state";
-import { filamentCrosslinkMonomers } from "../../src/ui/readout";
+import { crosslinkerCount, filamentCrosslinkMonomers } from "../../src/ui/readout";
 import {
   angleDegAtB,
   applyPerturbationConstraints,
@@ -100,6 +100,7 @@ describe("topology", () => {
     const state = preparedTwoFilamentState(params);
     buildCrosslinks(state, params, createSeededRng(3));
     expect(state.crosslinks).toHaveLength(2);
+    expect(crosslinkerCount(state)).toBe(2);
     expect(state.beads.filter((b) => b.isInternal)).toHaveLength(0);
   });
 
@@ -121,6 +122,7 @@ describe("topology", () => {
     buildCrosslinks(state, params, createSeededRng(4));
     expect(state.crosslinks).toHaveLength(0);
     expect(state.beads.filter((b) => b.isInternal)).toHaveLength(2);
+    expect(crosslinkerCount(state)).toBe(2);
     expect(state.bonds.length - bondsBefore).toBe(4);
     expect(state.bends.length - bendsBefore).toBe(2);
     expect(filamentCrosslinkMonomers(state, 0)).toHaveLength(2);

@@ -5,6 +5,15 @@ import type { Params, SimulationState, SweepSample } from "../model/types";
 import { angleCssColor, angleLegendStops, faceCssColor, registryCssColor } from "../render/color";
 import { scoreRegistries } from "../simulation/registry";
 
+export function crosslinkerCount(state: SimulationState): number {
+  if (state.pairLinkCount.size > 0) {
+    let count = 0;
+    for (const n of state.pairLinkCount.values()) count += n;
+    return count;
+  }
+  return state.crosslinks.length;
+}
+
 export function filamentCrosslinkMonomers(state: SimulationState, filamentId: number): number[] {
   if (filamentId < 0) return [];
   const monomers = new Set<number>();
@@ -99,6 +108,9 @@ export function renderReadout(readout: HTMLElement, state: SimulationState, para
   const zeroPairs = sc.zero;
   const status = state.running ? "running" : "paused";
   const filamentInfo = selectedFilamentInfo(state, params);
+  const nCrosslinkers = crosslinkerCount(state);
+  const nActinMonomers = Math.max(0, state.nFilamentBeads);
+  const crosslinkerActinRatio = nActinMonomers > 0 ? nCrosslinkers / nActinMonomers : 0;
 
   const grabF = (() => {
     if (state.grabbedBead < 0) return null;
@@ -130,8 +142,9 @@ export function renderReadout(readout: HTMLElement, state: SimulationState, para
     <strong>${status}</strong> · frame ${state.frame}<br>
     beads ${state.beads.length.toLocaleString()} · filaments ${state.filaments.length}
     · pairs ${state.neighborPairs.length}<br>
-    crosslinks: <strong>${state.crosslinks.length.toLocaleString()}</strong>
-    (sat=${(params.sat * 100).toFixed(0)}%)<br>
+    crosslinkers: <strong>${nCrosslinkers.toLocaleString()}</strong>
+    (sat=${(params.sat * 100).toFixed(0)}%) · crosslinker/actin=${crosslinkerActinRatio.toFixed(4)}
+    (${(crosslinkerActinRatio * 100).toFixed(2)}%)<br>
     compat. sites/pair: avg ${sc.avg.toFixed(2)} ± ${sc.std.toFixed(2)},
     <span class="${zeroPairs > 0 ? "warn" : "good"}">empty pairs ${zeroPairs}/${sc.pairs}</span><br>
     ABP: ${currentAbpEffective(params).label} · L₀=${params.clDist.toFixed(1)} nm · k<sub>cl</sub>=${params.kcl.toFixed(0)} pN/nm<br>

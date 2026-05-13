@@ -10,6 +10,7 @@ test("loads the app and paints the canvas", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Actin bundle toy model" })).toBeVisible();
   await expect(page.locator("#readout")).toContainText("filaments", { timeout: 10_000 });
   await expect(page.locator("#readout")).toContainText("paused");
+  await expect(page.locator("#readout")).toContainText("crosslinker/actin=");
   await expect(page.locator("#pauseBtn")).toContainText("Resume");
 
   const nonBlank = await page.locator("#canvas").evaluate((canvas) => {
