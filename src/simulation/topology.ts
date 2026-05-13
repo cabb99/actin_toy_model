@@ -1,16 +1,11 @@
-import { HEX_DIRS, MIN_CROSSLINK_SPACING_MONOMERS, PHASE_LEN } from "../model/constants";
+import { HEX_DIRS, PHASE_LEN } from "../model/constants";
 import { currentAbpEffective } from "../model/abp";
-import {
-  angularDistanceDeg,
-  axialToXY,
-  defaultRegistry,
-  exposedK,
-  hexDirectionDeg,
-  monomerExposedAngleDeg,
-  softAngularScore,
-} from "../model/hex";
+import { axialToXY, defaultRegistry } from "../model/hex";
 import type { BeadMeta, Params, Rng, SimulationState, Vec3 } from "../model/types";
+import { scoreRegistries, selectCrosslinkSites } from "./compatibility";
 import { randomRegistry } from "./random";
+
+export { compatibilityScore, compatibleAt, scoreRegistries } from "./compatibility";
 
 export function beadIndex(params: Pick<Params, "monomers">, filamentId: number, m: number): number {
   return filamentId * params.monomers + m;
@@ -62,50 +57,10 @@ export function assignRegistries(state: SimulationState, params: Params, rng: Rn
         break;
       case "perfect":
       default:
-        f.s = defaultRegistry(f.q, f.r, 0);
+        f.s = defaultRegistry(f.q, f.r);
         f.phaseDeg = phaseStep * f.s;
     }
   }
-}
-
-export function compatibilityScore(
-  state: SimulationState,
-  params: Params,
-  fi: number,
-  fj: number,
-  k: number,
-  m: number,
-): number {
-  const fi0 = state.filaments[fi];
-  const fj0 = state.filaments[fj];
-  if (!fi0 || !fj0) return 0;
-  const oppK = (k + 3) % 6;
-
-  if (params.helicityMode !== "continuous") {
-    return exposedK(m, fi0.s) === k && exposedK(m, fj0.s) === oppK ? 1 : 0;
-  }
-
-  const iAngle = monomerExposedAngleDeg(m, fi0.phaseDeg, params);
-  const jAngle = monomerExposedAngleDeg(m, fj0.phaseDeg, params);
-  const iMismatch = angularDistanceDeg(iAngle, hexDirectionDeg(k));
-  const jMismatch = angularDistanceDeg(jAngle, hexDirectionDeg(oppK));
-  const threshold = params.helicityAngleThresholdDeg;
-  const sharp = params.compatibilitySharpness;
-  const si = softAngularScore(iMismatch, threshold, sharp);
-  if (si <= 0) return 0;
-  const sj = softAngularScore(jMismatch, threshold, sharp);
-  return si * sj;
-}
-
-export function compatibleAt(
-  state: SimulationState,
-  params: Params,
-  fi: number,
-  fj: number,
-  k: number,
-  m: number,
-): boolean {
-  return compatibilityScore(state, params, fi, fj, k, m) > 0;
 }
 
 export function syncBeadsToTyped(state: SimulationState): void {
@@ -151,18 +106,9 @@ export function addInternalBead(state: SimulationState, x: number, y: number, z:
     x0: x,
     y0: y,
     z0: z,
-    pinned: false,
     isInternal: true,
   });
   return idx;
-}
-
-interface CrosslinkCandidate {
-  fi: number;
-  fj: number;
-  k: number;
-  m: number;
-  score: number;
 }
 
 export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng): void {
@@ -170,54 +116,19 @@ export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng
   state.bonds.length = state.nBackboneBonds;
   state.bends.length = state.nBackboneBends;
   state.crosslinks = [];
-  state.helicity.compatibleSites = 0;
-  state.helicity.incompatibleSites = 0;
   const counts = new Map<string, number>();
   for (const [fi, fj] of state.neighborPairs) counts.set(`${fi}-${fj}`, 0);
 
   const abp = currentAbpEffective(params);
   const restLen = abp.length;
 
-  // Greedy-claim by score keeps each (filament, monomer) bead in at most one
-  // crosslink — required when threshold > 30° lets a monomer match multiple
-  // hex directions.
-  const candidates: CrosslinkCandidate[] = [];
-  for (const [fi, fj, k] of state.neighborPairs) {
-    for (let m = 0; m < params.monomers; m++) {
-      const score = compatibilityScore(state, params, fi, fj, k, m);
-      if (score > 0) state.helicity.compatibleSites++;
-      else state.helicity.incompatibleSites++;
-      if (score <= 0) continue;
-      if (rng.random() > params.sat) continue;
-      candidates.push({ fi, fj, k, m, score });
-    }
-  }
-  candidates.sort((a, b) => b.score - a.score);
+  const { selected, census } = selectCrosslinkSites(state, params, { applySaturation: true, rng });
+  state.helicity.compatibleSites = census.compatibleSites;
+  state.helicity.incompatibleSites = census.incompatibleSites;
 
-  const claimed = new Set<number>();
-  const pairOccupied = new Map<string, number[]>();
-
-  for (const c of candidates) {
+  for (const c of selected) {
     const ia = beadIndex(params, c.fi, c.m);
     const ib = beadIndex(params, c.fj, c.m);
-    if (claimed.has(ia) || claimed.has(ib)) continue;
-    const pairKey = `${c.fi}-${c.fj}`;
-    const occupied = pairOccupied.get(pairKey);
-    if (occupied) {
-      let tooClose = false;
-      for (const m of occupied) {
-        if (Math.abs(m - c.m) < MIN_CROSSLINK_SPACING_MONOMERS) {
-          tooClose = true;
-          break;
-        }
-      }
-      if (tooClose) continue;
-      occupied.push(c.m);
-    } else {
-      pairOccupied.set(pairKey, [c.m]);
-    }
-    claimed.add(ia);
-    claimed.add(ib);
 
     if (abp.model === "single") {
       state.crosslinks.push([ia, ib, restLen]);
@@ -253,6 +164,7 @@ export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng
   }
 
   state.pairLinkCount = counts;
+  state.helicity.score = scoreRegistries(state, params);
   syncBeadsToTyped(state);
 }
 
@@ -291,7 +203,6 @@ export function resetSystem(
         x0: baseX,
         y0: baseY,
         z0: baseZ,
-        pinned: false,
       };
       state.beads.push(bead);
     }
@@ -324,7 +235,6 @@ export function resetSystem(
 }
 
 export function applyPerturbationConstraints(state: SimulationState, params: Params): void {
-  for (const p of state.beads) p.pinned = false;
   state.bend.leftBeads = [];
   state.bend.centerBeads = [];
   state.bend.rightBeads = [];
@@ -435,10 +345,3 @@ export function updateAngleBendReference(state: SimulationState, params: Params)
   state.perturb.angleMoment = state.bend.angleMoment;
 }
 
-export function compatibleSiteCountPerPeriod(si: number, sj: number, k: number): number {
-  let n = 0;
-  for (let m = 0; m < PHASE_LEN; m++) {
-    if (exposedK(m, si) === k && exposedK(m, sj) === (k + 3) % 6) n++;
-  }
-  return n;
-}

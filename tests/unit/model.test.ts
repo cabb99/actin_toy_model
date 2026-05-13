@@ -56,7 +56,7 @@ describe("hex and phase model", () => {
   it("wraps registries into the 12-state phase space", () => {
     expect(defaultRegistry(1, 2)).toBe(5);
     expect(defaultRegistry(-1, -2)).toBe(7);
-    expect(defaultRegistry(0, 0, 14)).toBe(2);
+    expect(defaultRegistry(7, 0)).toBe(7);
   });
 
   it("wraps and compares angles across the 0/360 seam", () => {

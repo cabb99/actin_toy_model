@@ -1,4 +1,4 @@
-import type { EnergyBreakdown, SimulationState } from "../model/types";
+import type { EnergyBreakdown, RegistryScore, SimulationState } from "../model/types";
 
 export const defaultView = { rotX: -0.78, rotY: 0.58 };
 
@@ -12,6 +12,10 @@ export function emptyEnergy(): EnergyBreakdown {
     perturb: 0,
     grab: 0,
   };
+}
+
+export function emptyRegistryScore(): RegistryScore {
+  return { total: 0, counts: [], avg: 0, std: 0, zero: 0, hot: 0, pairs: 0, count: 0 };
 }
 
 export function createSimulationState(): SimulationState {
@@ -52,6 +56,7 @@ export function createSimulationState(): SimulationState {
     helicity: {
       compatibleSites: 0,
       incompatibleSites: 0,
+      score: emptyRegistryScore(),
     },
     nFilamentBeads: 0,
     nBackboneBonds: 0,

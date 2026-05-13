@@ -1,4 +1,4 @@
-name: actin_toy_model
+name: toy_actin
 channels:
   - conda-forge
 dependencies:

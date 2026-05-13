@@ -7,7 +7,7 @@ background and roadmap, see `docs/ARCHITECTURE.md`.
 ## Quick Start
 
 ```bash
-conda activate actin_toy_model
+conda activate toy_actin
 npm install
 npm run dev
 ```
@@ -20,7 +20,7 @@ If the environment does not exist yet:
 
 ```bash
 conda env create -f environment.yml
-conda activate actin_toy_model
+conda activate toy_actin
 npm install
 npx playwright install chromium
 ```
@@ -401,7 +401,7 @@ Longer-term possibilities:
 If `node` is missing:
 
 ```bash
-conda activate actin_toy_model
+conda activate toy_actin
 ```
 
 If Playwright says the browser is missing:

@@ -95,7 +95,6 @@ describe("topology", () => {
     expect(state.bend.leftBeads).toHaveLength(state.filaments.length * 3);
     expect(state.bend.centerBeads).toHaveLength(state.filaments.length * 3);
     expect(state.bend.rightBeads).toHaveLength(state.filaments.length * 3);
-    expect([...state.bend.leftBeads, ...state.bend.centerBeads, ...state.bend.rightBeads].some((idx) => state.beads[idx].pinned)).toBe(false);
   });
 
   it("measures the ABC angle from the selected COM sections", () => {
@@ -286,8 +285,8 @@ describe("force kernel characterization", () => {
     const params = smallParams({ monomers: 1, kb: 10, rep: 0 });
     const state = createSimulationState();
     state.beads = [
-      { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 0, y0: 0, z0: 0, pinned: false },
-      { x: 2, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 2, y0: 0, z0: 0, pinned: false },
+      { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 0, y0: 0, z0: 0 },
+      { x: 2, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 2, y0: 0, z0: 0 },
     ];
     state.bonds = [[0, 1, 1]];
     syncBeadsToTyped(state);
@@ -334,9 +333,9 @@ describe("force kernel characterization", () => {
     });
     const state = createSimulationState();
     state.beads = [
-      { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 0, y0: 0, z0: 0, pinned: false },
-      { x: 1, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 1, x0: 1, y0: 0, z0: 0, pinned: false },
-      { x: 1, y: 1, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 2, x0: 1, y0: 1, z0: 0, pinned: false },
+      { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 0, y0: 0, z0: 0 },
+      { x: 1, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 1, x0: 1, y0: 0, z0: 0 },
+      { x: 1, y: 1, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 2, x0: 1, y0: 1, z0: 0 },
     ];
     state.bend.leftBeads = [0];
     state.bend.centerBeads = [1];
@@ -358,9 +357,9 @@ describe("force kernel characterization", () => {
     const params = smallParams({ monomers: 3, perturbMode: "bend3", bendAngleDeg: 120, rep: 0 });
     const state = createSimulationState();
     state.beads = [
-      { x: 0, y: 0, z: -1, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 0, y0: 0, z0: -1, pinned: false },
-      { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 1, x0: 0, y0: 0, z0: 0, pinned: false },
-      { x: 0, y: 0, z: 1, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 2, x0: 0, y0: 0, z0: 1, pinned: false },
+      { x: 0, y: 0, z: -1, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 0, x0: 0, y0: 0, z0: -1 },
+      { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 1, x0: 0, y0: 0, z0: 0 },
+      { x: 0, y: 0, z: 1, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: 0, f: 0, m: 2, x0: 0, y0: 0, z0: 1 },
     ];
     state.bend.leftBeads = [0];
     state.bend.centerBeads = [1];
@@ -370,7 +369,6 @@ describe("force kernel characterization", () => {
 
     computeForces(state, params);
 
-    expect(state.beads.some((bead) => bead.pinned)).toBe(false);
     expect(state.bend.actualAngleDeg).toBeCloseTo(180);
     expect(state.frc[3]).toBeGreaterThan(0);
     expect(state.frc[0] + state.frc[3] + state.frc[6]).toBeCloseTo(0);

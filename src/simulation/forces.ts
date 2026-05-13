@@ -309,20 +309,6 @@ export function computeForces(state: SimulationState, params: Params): void {
   }
 
   if (params.perturbMode === "bend3") {
-    const kPin = 5000;
-    for (let i = 0; i < beads.length; i++) {
-      const p = beads[i];
-      if (!p.pinned) continue;
-      const i3 = i * 3;
-      const ex = pos[i3] - p.x0;
-      const ey = pos[i3 + 1] - p.y0;
-      const ez = pos[i3 + 2] - p.z0;
-      frc[i3] -= kPin * ex;
-      frc[i3 + 1] -= kPin * ey;
-      frc[i3 + 2] -= kPin * ez;
-      state.energy.perturb += 0.5 * kPin * (ex * ex + ey * ey + ez * ez);
-    }
-
     applyComAngleForce(state, params);
   } else {
     resetAngleBendReadout(state);

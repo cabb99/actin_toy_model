@@ -48,7 +48,6 @@ export function fireStep(state: SimulationState, params: Params, fire: FireState
   let vNorm2 = 0;
   let fNorm2 = 0;
   for (let i = 0; i < beads.length; i++) {
-    if (beads[i].pinned) continue;
     const i3 = i * 3;
     P += frc[i3] * vel[i3] + frc[i3 + 1] * vel[i3 + 1] + frc[i3 + 2] * vel[i3 + 2];
     vNorm2 += vel[i3] ** 2 + vel[i3 + 1] ** 2 + vel[i3 + 2] ** 2;
@@ -61,7 +60,6 @@ export function fireStep(state: SimulationState, params: Params, fire: FireState
     const beta = (fire.alpha * vNorm) / fNorm;
     const oneMinusA = 1 - fire.alpha;
     for (let i = 0; i < beads.length; i++) {
-      if (beads[i].pinned) continue;
       const i3 = i * 3;
       vel[i3] = oneMinusA * vel[i3] + beta * frc[i3];
       vel[i3 + 1] = oneMinusA * vel[i3 + 1] + beta * frc[i3 + 1];
@@ -73,13 +71,7 @@ export function fireStep(state: SimulationState, params: Params, fire: FireState
     }
     fire.Npos++;
   } else {
-    for (let i = 0; i < beads.length; i++) {
-      if (beads[i].pinned) continue;
-      const i3 = i * 3;
-      vel[i3] = 0;
-      vel[i3 + 1] = 0;
-      vel[i3 + 2] = 0;
-    }
+    vel.fill(0);
     fire.dt = Math.max(fire.dt * fire.fDec, fire.dtMin);
     fire.alpha = fire.alphaStart;
     fire.Npos = 0;
@@ -88,7 +80,6 @@ export function fireStep(state: SimulationState, params: Params, fire: FireState
   const dt = fire.dt;
   const halfDt = 0.5 * dt;
   for (let i = 0; i < beads.length; i++) {
-    if (beads[i].pinned) continue;
     const i3 = i * 3;
     vel[i3] += halfDt * frc[i3];
     vel[i3 + 1] += halfDt * frc[i3 + 1];
@@ -100,7 +91,6 @@ export function fireStep(state: SimulationState, params: Params, fire: FireState
 
   computeForces(state, params);
   for (let i = 0; i < beads.length; i++) {
-    if (beads[i].pinned) continue;
     const i3 = i * 3;
     vel[i3] += halfDt * frc[i3];
     vel[i3 + 1] += halfDt * frc[i3 + 1];
@@ -121,7 +111,6 @@ export function fireMinimize(
     if (it % 20 === 19) {
       let fMaxSq = 0;
       for (let i = 0; i < state.beads.length; i++) {
-        if (state.beads[i].pinned) continue;
         const i3 = i * 3;
         const f2 = state.frc[i3] ** 2 + state.frc[i3 + 1] ** 2 + state.frc[i3 + 2] ** 2;
         if (f2 > fMaxSq) fMaxSq = f2;

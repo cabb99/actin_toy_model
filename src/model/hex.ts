@@ -13,8 +13,8 @@ export function exposedK(m: number, s: number): number | null {
   return PHASE_TO_K[p];
 }
 
-export function defaultRegistry(q: number, r: number, s0 = 0): number {
-  return ((s0 + q + 2 * r) % PHASE_LEN + PHASE_LEN) % PHASE_LEN;
+export function defaultRegistry(q: number, r: number): number {
+  return ((q + 2 * r) % PHASE_LEN + PHASE_LEN) % PHASE_LEN;
 }
 
 export function wrapDeg360(deg: number): number {
@@ -62,18 +62,6 @@ export function displayedFaceK(
     return nearestHexDirectionK(monomerExposedAngleDeg(m, filament.phaseDeg, params));
   }
   return exposedK(m, filament.s);
-}
-
-export function displayedFaceAngleDeg(
-  m: number,
-  filament: Filament,
-  params: Pick<
-    Params,
-    "helicityMode" | "actinTwistDeg" | "helicityHandedness" | "helicityPhaseOffsetDeg"
-  >,
-): number | null {
-  const faceIndex = displayedFaceK(m, filament, params);
-  return faceIndex === null ? null : hexDirectionDeg(faceIndex);
 }
 
 export function softAngularScore(

@@ -89,7 +89,6 @@ export interface BeadMeta {
   x0: number;
   y0: number;
   z0: number;
-  pinned: boolean;
   isInternal?: boolean;
 }
 
@@ -159,6 +158,8 @@ export interface SimulationState {
   helicity: {
     compatibleSites: number;
     incompatibleSites: number;
+    /** Cached upper-bound score (sat=1) refreshed by `buildCrosslinks`. */
+    score: RegistryScore;
   };
   nFilamentBeads: number;
   nBackboneBonds: number;

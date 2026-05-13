@@ -1,4 +1,3 @@
-import { KBT_PN_NM } from "../model/constants";
 import type { Params, SimulationState, SweepSample } from "../model/types";
 import { computeForces } from "./forces";
 import { fireMinimize } from "./fire";
@@ -71,8 +70,4 @@ export function sweepBend(
   ].join("\n");
 
   return { samples, EI, L, csv };
-}
-
-export function persistenceLengthMicrons(EI: number): number {
-  return EI / KBT_PN_NM / 1000;
 }

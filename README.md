@@ -4,14 +4,14 @@ The simulation core can be tested without the DOM.
 
 ## Create the environment
 
-[x] `conda env create -n actin_toy_model -f environment.yml` recreates the Node-backed conda
+[x] `conda env create -n toy_actin -f environment.yml` recreates the Node-backed conda
   environment used for development.
 [x] `npm install` installs the Vite, Vitest, TypeScript, and Playwright tooling.
 [x] `npx playwright install chromium` installs the browser used by e2e tests.
 
 
 ## Commands to run the server
-- `conda activate actin_toy_model` activates it.
+- `conda activate toy_actin` activates it.
 - `npm run dev` starts the local app.
 - `npm run build` runs TypeScript checking and builds both `index.html` and the compatibility `toy_model.html` entry.
 - `npm run build:pages` builds the same app with the `/actin_toy_model/` base path used by GitHub Pages.

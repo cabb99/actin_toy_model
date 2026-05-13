@@ -1,5 +1,5 @@
 import { currentAbpEffective } from "../model/abp";
-import { KBT_PN_NM } from "../model/constants";
+import { persistenceLengthMicrons } from "../model/constants";
 import { displayedFaceK } from "../model/hex";
 import type { Params, SimulationState, SweepSample } from "../model/types";
 import { angleCssColor, angleLegendStops, faceCssColor, registryCssColor } from "../render/color";
@@ -64,8 +64,7 @@ export function renderReadout(readout: HTMLElement, state: SimulationState, para
           const L = (params.monomers - 1) * params.b;
           const foldAngle = (Math.abs(180 - state.bend.actualAngleDeg) * Math.PI) / 180;
           const EI = (Math.abs(state.bend.angleMoment) * L) / foldAngle;
-          const Lp = EI / KBT_PN_NM / 1000;
-          return `<br>EI ≈ ${EI.toFixed(0)} pN·nm² (Lp ≈ ${Lp.toFixed(2)} µm)`;
+          return `<br>EI ≈ ${EI.toFixed(0)} pN·nm² (Lp ≈ ${persistenceLengthMicrons(EI).toFixed(2)} µm)`;
         })()
       : "";
 
@@ -99,11 +98,11 @@ export function renderSweepTable(
 
   const eiSlope = result.eiSlope ?? NaN;
   const L = result.L ?? 0;
-  const lpStr = Number.isFinite(eiSlope) ? `${(eiSlope / KBT_PN_NM / 1000).toFixed(2)} µm` : "—";
+  const lpStr = Number.isFinite(eiSlope) ? `${persistenceLengthMicrons(eiSlope).toFixed(2)} µm` : "—";
   const eiStr = Number.isFinite(eiSlope) ? `${eiSlope.toFixed(0)} pN·nm²` : "—";
   const rows = samples
     .map((s) => {
-      const lpRow = Number.isFinite(s.ei) ? (s.ei / KBT_PN_NM / 1000).toFixed(2) : "";
+      const lpRow = Number.isFinite(s.ei) ? persistenceLengthMicrons(s.ei).toFixed(2) : "";
       return `<tr>
         <td style="text-align:right">${s.angleTargetDeg.toFixed(1)}</td>
         <td style="text-align:right">${s.actualAngleDeg.toFixed(1)}</td>

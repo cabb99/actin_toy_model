@@ -26,15 +26,6 @@ export const HEX_DIRS = [
   [1, -1],
 ] as const;
 
-export const FACE_COLORS = [
-  "#f87171",
-  "#f59e0b",
-  "#facc15",
-  "#34d399",
-  "#60a5fa",
-  "#c084fc",
-] as const;
-
 export const ABP_PRESETS: Record<Exclude<AbpType, "custom">, AbpPreset> = {
   fascin: {
     model: "single",
@@ -82,6 +73,10 @@ export const MIN_CROSSLINK_SPACING_MONOMERS = 5;
 
 export function actinKtheta(b: number): number {
   return ACTIN_KAPPA / b;
+}
+
+export function persistenceLengthMicrons(eiPnNm2: number): number {
+  return eiPnNm2 / KBT_PN_NM / 1000;
 }
 
 export function defaultParams(): Params {

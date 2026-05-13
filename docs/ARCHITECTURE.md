@@ -89,7 +89,7 @@ Use tests as characterization before changing behavior:
 Recommended command sequence:
 
 ```bash
-conda activate actin_toy_model
+conda activate toy_actin
 npm test
 npm run build
 npm run test:e2e

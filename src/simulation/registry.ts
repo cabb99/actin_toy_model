@@ -1,50 +1,10 @@
-import { MIN_CROSSLINK_SPACING_MONOMERS, PHASE_LEN } from "../model/constants";
+import { PHASE_LEN } from "../model/constants";
 import { wrapDeg360 } from "../model/hex";
 import type { Params, RegistryScore, Rng, SimulationState } from "../model/types";
-import { buildCrosslinks, compatibilityScore } from "./topology";
+import { scoreRegistries } from "./compatibility";
+import { buildCrosslinks } from "./topology";
 
-export function scoreRegistries(state: SimulationState, params: Params): RegistryScore {
-  let total = 0;
-  let count = 0;
-  const counts: number[] = [];
-  for (const [fi, fj, k] of state.neighborPairs) {
-    const cands: { m: number; s: number }[] = [];
-    for (let m = 0; m < params.monomers; m++) {
-      const s = compatibilityScore(state, params, fi, fj, k, m);
-      if (s > 0) cands.push({ m, s });
-    }
-    cands.sort((a, b) => b.s - a.s);
-    let pairScore = 0;
-    const accepted: number[] = [];
-    for (const c of cands) {
-      let tooClose = false;
-      for (const m of accepted) {
-        if (Math.abs(m - c.m) < MIN_CROSSLINK_SPACING_MONOMERS) {
-          tooClose = true;
-          break;
-        }
-      }
-      if (tooClose) continue;
-      accepted.push(c.m);
-      pairScore += c.s;
-      count++;
-    }
-    counts.push(pairScore);
-    total += pairScore;
-  }
-  const avg = counts.length ? total / counts.length : 0;
-  let varSum = 0;
-  let zero = 0;
-  let hot = 0;
-  const lim = avg * 2.0;
-  for (const n of counts) {
-    varSum += (n - avg) ** 2;
-    if (n <= 0) zero++;
-    if (n > lim) hot++;
-  }
-  const std = counts.length ? Math.sqrt(varSum / counts.length) : 0;
-  return { total, counts, avg, std, zero, hot, pairs: counts.length, count };
-}
+export { scoreRegistries } from "./compatibility";
 
 export function mcEnergy(score: RegistryScore, skewPenalty: number): number {
   return -score.total + skewPenalty * score.std * score.pairs;
