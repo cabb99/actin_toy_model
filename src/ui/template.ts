@@ -121,6 +121,8 @@ export const APP_HTML = String.raw`
         <button id="faceArrowToggle" class="toggle">Face arrows</button>
         <button id="registryToggle" class="toggle">Registry</button>
         <button id="ghostToggle" class="toggle on">Filaments</button>
+        <button id="sideViewBtn" class="full">Side view</button>
+        <button id="topViewBtn" class="full">Top view</button>
       </div>
 
       <h2>Run</h2>

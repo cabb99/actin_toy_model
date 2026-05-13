@@ -192,6 +192,16 @@ document.getElementById("kickBtn")?.addEventListener("click", () => kick(state, 
 document.getElementById("straightBtn")?.addEventListener("click", () => reset(false));
 document.getElementById("randomBtn")?.addEventListener("click", () => reset(true));
 document.getElementById("fitBtn")?.addEventListener("click", () => renderer.fitView(false));
+document.getElementById("sideViewBtn")?.addEventListener("click", () => {
+  state.view.rotX = 0;
+  state.view.rotY = Math.PI / 2;
+  renderer.fitView(false);
+});
+document.getElementById("topViewBtn")?.addEventListener("click", () => {
+  state.view.rotX = 0;
+  state.view.rotY = 0;
+  renderer.fitView(false);
+});
 document.getElementById("sweepBtn")?.addEventListener("click", () => {
   refs.selects.perturbMode.value = "bend3";
   commitLiveParams();

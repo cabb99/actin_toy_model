@@ -54,6 +54,26 @@ test("controls update labels and display toggles stay stable", async ({ page }) 
 
   await page.locator("#highlightFilament").selectOption("0");
   await expect(page.locator("#readout")).toContainText("selected filament 0");
+
+  await page.locator("#sideViewBtn").click();
+  const sideViewStillPaints = await page.locator("#canvas").evaluate((canvas) => {
+    const c = canvas as HTMLCanvasElement;
+    const ctx = c.getContext("2d");
+    if (!ctx) return false;
+    const { data } = ctx.getImageData(0, 0, Math.min(80, c.width), Math.min(80, c.height));
+    return Array.from(data).some((value, i) => i % 4 !== 3 && value !== 0);
+  });
+  expect(sideViewStillPaints).toBe(true);
+
+  await page.locator("#topViewBtn").click();
+  const topViewStillPaints = await page.locator("#canvas").evaluate((canvas) => {
+    const c = canvas as HTMLCanvasElement;
+    const ctx = c.getContext("2d");
+    if (!ctx) return false;
+    const { data } = ctx.getImageData(0, 0, Math.min(80, c.width), Math.min(80, c.height));
+    return Array.from(data).some((value, i) => i % 4 !== 3 && value !== 0);
+  });
+  expect(topViewStillPaints).toBe(true);
 });
 
 test("monte carlo switches registry mode to custom", async ({ page }) => {
