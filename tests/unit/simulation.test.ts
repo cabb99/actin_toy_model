@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { defaultParams, MIN_CROSSLINK_SPACING_MONOMERS } from "../../src/model/constants";
+import { ABP_PRESETS, defaultParams, MIN_CROSSLINK_SPACING_MONOMERS, PHASE_LEN } from "../../src/model/constants";
 import type { Params, SimulationState } from "../../src/model/types";
+import { effectiveMonomerIndex, gaussianScore, wrapAxialOffsetMonomers } from "../../src/model/hex";
 import { computeForces } from "../../src/simulation/forces";
 import { createSeededRng } from "../../src/simulation/random";
 import { runMonteCarlo, scoreRegistries } from "../../src/simulation/registry";
@@ -11,6 +12,7 @@ import {
   applyPerturbationConstraints,
   buildCrosslinks,
   compatibilityScore,
+  compatibilityScoreAt,
   compatibleAt,
   resetSystem,
   syncBeadsToTyped,
@@ -30,12 +32,12 @@ function smallParams(overrides: Partial<Params> = {}): Params {
   };
 }
 
-function preparedTwoFilamentState(params: Params): SimulationState {
+function preparedTwoFilamentState(params: Params, sj = 1): SimulationState {
   const state = createSimulationState();
   resetSystem(state, params, createSeededRng(1), false);
   state.neighborPairs = [[0, 1, 0]];
   state.filaments[0].s = 0;
-  state.filaments[1].s = 1;
+  state.filaments[1].s = sj;
   state.nFilamentBeads = state.filaments.length * params.monomers;
   state.nBackboneBonds = state.bonds.length;
   state.nBackboneBends = state.bends.length;
@@ -70,12 +72,17 @@ describe("topology", () => {
   });
 
   it("uses cardinal square angles for continuous compatibility", () => {
+    // Use legacy hard-threshold scoring so this test exercises the
+    // threshold/sharpness path it was written against. Custom ABP avoids the
+    // fascin axial stagger which otherwise zeroes the score at mi=mj=0.
     const params = smallParams({
       latticeGeometry: "square",
       helicityMode: "continuous",
       actinTwistDeg: 0,
       helicityAngleThresholdDeg: 0,
       compatibilitySharpness: 0,
+      scoringMode: "legacy",
+      abpType: "custom",
     });
     const state = createSimulationState();
     resetSystem(state, params, createSeededRng(44), false);
@@ -89,7 +96,9 @@ describe("topology", () => {
   });
 
   it("scores compatible registry sites and respects saturation zero", () => {
-    const params = smallParams({ sat: 0 });
+    // Use `custom` ABP so the same-monomer compatibility semantics being
+    // characterized here are not changed by fascin's 0.84-monomer axial stagger.
+    const params = smallParams({ sat: 0, abpType: "custom" });
     const state = preparedTwoFilamentState(params);
     expect(compatibleAt(state, params, 0, 1, 0, 0)).toBe(true);
     expect(scoreRegistries(state, params).total).toBe(2);
@@ -97,9 +106,12 @@ describe("topology", () => {
     expect(state.crosslinks).toHaveLength(0);
   });
 
-  it("creates single-spring crosslinks for compatible sites", () => {
+  it("creates single-spring crosslinks for compatible sites (fascin staggered)", () => {
+    // Fascin requires mj = mi + 1 (0.84-monomer axial stagger). With s0=s1=0,
+    // every 12 monomers the (mi, mi+1) pair has compatible faces at k=0, so we
+    // expect 2 crosslinks in a 24-monomer filament pair.
     const params = smallParams({ abpType: "fascin", sat: 1 });
-    const state = preparedTwoFilamentState(params);
+    const state = preparedTwoFilamentState(params, 0);
     buildCrosslinks(state, params, createSeededRng(3));
     expect(state.crosslinks).toHaveLength(2);
     expect(crosslinkerCount(state)).toBe(2);
@@ -108,7 +120,7 @@ describe("topology", () => {
 
   it("reports crosslink monomers attached to a selected filament", () => {
     const params = smallParams({ abpType: "fascin", sat: 1 });
-    const state = preparedTwoFilamentState(params);
+    const state = preparedTwoFilamentState(params, 0);
     buildCrosslinks(state, params, createSeededRng(32));
 
     const monomers = filamentCrosslinkMonomers(state, 0);
@@ -165,6 +177,8 @@ describe("topology", () => {
       helicityPhaseOffsetDeg: 1,
       helicityAngleThresholdDeg: 0,
       compatibilitySharpness: 0,
+      scoringMode: "legacy",
+      abpType: "custom",
     });
     const state = createSimulationState();
     resetSystem(state, params, createSeededRng(8), false);
@@ -184,6 +198,8 @@ describe("topology", () => {
       helicityPhaseOffsetDeg: 10,
       helicityAngleThresholdDeg: 5,
       compatibilitySharpness: 0,
+      scoringMode: "legacy",
+      abpType: "custom",
     });
     const loose = { ...strict, helicityAngleThresholdDeg: 15 };
     resetSystem(state, strict, createSeededRng(9), false);
@@ -202,6 +218,8 @@ describe("topology", () => {
       helicityPhaseOffsetDeg: 0,
       helicityAngleThresholdDeg: 30,
       compatibilitySharpness: 1,
+      scoringMode: "legacy",
+      abpType: "custom",
     });
     const state = createSimulationState();
     resetSystem(state, params, createSeededRng(10), false);
@@ -304,6 +322,240 @@ describe("topology", () => {
   });
 });
 
+describe("polarity & axial-offset compatibility", () => {
+  it("effectiveMonomerIndex flips around the midpoint when polarity is -1", () => {
+    expect(effectiveMonomerIndex(0, 1, 13)).toBe(0);
+    expect(effectiveMonomerIndex(12, 1, 13)).toBe(12);
+    expect(effectiveMonomerIndex(0, -1, 13)).toBe(12);
+    expect(effectiveMonomerIndex(12, -1, 13)).toBe(0);
+    expect(effectiveMonomerIndex(6, -1, 13)).toBe(6);
+  });
+
+  it("wrapAxialOffsetMonomers wraps to [-0.5, +0.5) and reports the integer carry", () => {
+    expect(wrapAxialOffsetMonomers(0)).toEqual({ wrapped: 0, carry: 0 });
+    expect(wrapAxialOffsetMonomers(0.3)).toEqual({ wrapped: 0.3, carry: 0 });
+    expect(wrapAxialOffsetMonomers(-0.3)).toEqual({ wrapped: -0.3, carry: 0 });
+    const a = wrapAxialOffsetMonomers(0.6);
+    expect(a.carry).toBe(1);
+    expect(a.wrapped).toBeCloseTo(-0.4, 12);
+    const b = wrapAxialOffsetMonomers(-0.7);
+    expect(b.carry).toBe(-1);
+    expect(b.wrapped).toBeCloseTo(0.3, 12);
+    // +0.5 sits on the boundary; we use the half-open [-0.5, +0.5) convention,
+    // so it wraps to -0.5 + 1 carry.
+    const c = wrapAxialOffsetMonomers(0.5);
+    expect(c.carry).toBe(1);
+    expect(c.wrapped).toBeCloseTo(-0.5, 12);
+  });
+
+  it("requireParallel zeroes compatibility for antiparallel filaments", () => {
+    const params = smallParams({ abpType: "fascin" });
+    const state = preparedTwoFilamentState(params, 0);
+    // Polarity +1 / +1 (default): fascin (mi=0, mj=1) should be compatible since
+    // s_i=s_j=0 puts the (m=0) face at k=0 and (m=1) face at the opposite of k=0.
+    expect(compatibilityScoreAt(state, params, 0, 1, 0, 0, 1)).toBeGreaterThan(0);
+    // Flip one polarity; with fascin's requireParallel=true, the score collapses.
+    state.filaments[1].polarity = -1;
+    expect(compatibilityScoreAt(state, params, 0, 1, 0, 0, 1)).toBe(0);
+  });
+
+  it("axial-offset window accepts only mj near mi + abp offset", () => {
+    expect(ABP_PRESETS.fascin.abpAxialOffsetMonomers).toBeCloseTo(0.84);
+    expect(ABP_PRESETS.fascin.abpAxialOffsetTolMonomers).toBeCloseTo(0.2);
+    const params = smallParams({ abpType: "fascin" });
+    const state = preparedTwoFilamentState(params, 0);
+    // The window check lives in selectCrosslinkSites, not in compatibilityScore.
+    // Run scoreRegistries with a one-pair setup and verify mj = mi+1 wins.
+    state.helicity.score = scoreRegistries(state, params);
+    expect(state.helicity.score.count).toBeGreaterThan(0);
+    buildCrosslinks(state, params, createSeededRng(60));
+    for (const [ia, ib] of state.crosslinks) {
+      const a = state.beads[ia];
+      const b = state.beads[ib];
+      // mj - mi should equal +1 with fascin's 0.84 ± 0.2 window.
+      expect(b.m - a.m).toBe(1);
+    }
+    // Per-site face score (no axial gate) at (mi=0, mj=0) is the same as at
+    // (mi=0, mj=1) only if both pairs have a face match — they don't, so we
+    // expect compatibilityScoreAt to differ across mj values.
+    expect(compatibilityScoreAt(state, params, 0, 1, 0, 0, 0)).toBe(0);
+    expect(compatibilityScoreAt(state, params, 0, 1, 0, 0, 1)).toBeGreaterThan(0);
+  });
+
+  it("non-staggered ABPs collapse to same-monomer compatibility", () => {
+    const params = smallParams({ abpType: "camkii" });
+    const state = preparedTwoFilamentState(params);
+    // With camkii (offset=0, tol=0) the iteration loop only considers mj = mi.
+    // The face score at (mi=0, mj=0) is compatible (s=0/1 lines up at k=0),
+    // and any non-same-monomer probe returns the per-site face score for that
+    // off-diagonal mj, which here is zero by the s=0/1 helical pattern.
+    expect(compatibleAt(state, params, 0, 1, 0, 0)).toBe(true);
+    expect(compatibilityScoreAt(state, params, 0, 1, 0, 0, 1)).toBe(0);
+  });
+
+  it("fascin crosslink rest length is the geometric diagonal", () => {
+    const params = smallParams({ abpType: "fascin" });
+    const state = preparedTwoFilamentState(params);
+    state.filaments[0].s = 0;
+    state.filaments[1].s = 0;
+    buildCrosslinks(state, params, createSeededRng(101));
+    expect(state.crosslinks.length).toBeGreaterThan(0);
+    const [ia, ib, rest] = state.crosslinks[0];
+    const a = state.beads[ia];
+    const b = state.beads[ib];
+    const expected = Math.hypot(b.x0 - a.x0, b.y0 - a.y0, b.z0 - a.z0);
+    expect(rest).toBeCloseTo(expected, 6);
+    // Bead axial spacing here = 1 * b (since mj - mi = 1, no per-filament shift).
+    const axialNm = params.b;
+    const perpNm = params.a;
+    const diag = Math.hypot(perpNm, axialNm);
+    expect(rest).toBeCloseTo(diag, 6);
+  });
+
+  it("MC slide+polarity moves keep filament state finite and bounded", async () => {
+    // Mixed slide + polarity moves at low T. We don't assert on final-state
+    // equality (energy-neutral slides ARE accepted under the Metropolis rule
+    // because dE = 0 → accept always, which mutates the best snapshot via the
+    // std tiebreaker). What we DO assert: nothing leaves the legal ranges.
+    const params: Params = {
+      ...smallParams({ abpType: "fascin", helicityMode: "continuous" }),
+      mcIters: 100,
+      mcAxialSlideProb: 0.5,
+      mcPolarityFlipProb: 0.5,
+      mcT0: 1e-12,
+      mcT1: 1e-12,
+      mcSkew: 0,
+    };
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(50), false);
+    await runMonteCarlo(state, params, createSeededRng(51), { iters: 100 });
+    for (const f of state.filaments) {
+      expect(Number.isFinite(f.axialOffsetMonomers)).toBe(true);
+      expect(f.axialOffsetMonomers).toBeGreaterThanOrEqual(-0.5 - 1e-9);
+      expect(f.axialOffsetMonomers).toBeLessThan(0.5 + 1e-9);
+      expect(Number.isFinite(f.phaseDeg)).toBe(true);
+      expect(f.phaseDeg).toBeGreaterThanOrEqual(0);
+      expect(f.phaseDeg).toBeLessThan(360 + 1e-9);
+      expect(f.polarity === 1 || f.polarity === -1).toBe(true);
+    }
+  });
+
+  it("axial-offset wrap is energy-neutral (continuous mode)", () => {
+    // The wrap shifts axialOffsetMonomers by -carry and phaseDeg by
+    // -carry*h*twist. The combined transform is the identity on the physical
+    // helix, so scoreRegistries should be invariant under it.
+    const params: Params = {
+      ...smallParams({ abpType: "fascin", helicityMode: "continuous" }),
+      helicityHandedness: 1,
+      registryMode: "zero",
+    };
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(70), false);
+    // Stage a near-wrap-boundary state on filament 0.
+    state.filaments[0].axialOffsetMonomers = 0.49;
+    state.filaments[0].phaseDeg = 137;
+    const baseline = scoreRegistries(state, params).total;
+    // Apply a manual wrap: axialOff += -1 (carry=+1), phaseDeg -= 1*h*twist.
+    state.filaments[0].axialOffsetMonomers -= 1;
+    state.filaments[0].phaseDeg =
+      ((state.filaments[0].phaseDeg - 1 * params.helicityHandedness * params.actinTwistDeg) % 360 + 360) % 360;
+    const wrapped = scoreRegistries(state, params).total;
+    expect(wrapped).toBeCloseTo(baseline, 9);
+  });
+
+  it("axial-offset wrap is energy-neutral (discrete-12 mode)", () => {
+    // Discrete: s -= carry exactly recovers the score under the bookkeeping wrap.
+    const params: Params = {
+      ...smallParams({ abpType: "fascin", helicityMode: "discrete12" }),
+      registryMode: "zero",
+    };
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(71), false);
+    state.filaments[0].axialOffsetMonomers = 0.49;
+    state.filaments[0].s = 4;
+    const baseline = scoreRegistries(state, params).total;
+    state.filaments[0].axialOffsetMonomers -= 1;
+    state.filaments[0].s = ((state.filaments[0].s - 1) % PHASE_LEN + PHASE_LEN) % PHASE_LEN;
+    const wrapped = scoreRegistries(state, params).total;
+    expect(wrapped).toBeCloseTo(baseline, 9);
+  });
+});
+
+describe("gaussian scoring & annealing", () => {
+  it("gaussianScore peaks at zero mismatch and decays smoothly", () => {
+    expect(gaussianScore(0, 10)).toBeCloseTo(1, 12);
+    expect(gaussianScore(10, 10)).toBeCloseTo(Math.exp(-0.5), 12);
+    expect(gaussianScore(-10, 10)).toBeCloseTo(Math.exp(-0.5), 12);
+    expect(gaussianScore(30, 10)).toBeCloseTo(Math.exp(-4.5), 12); // 3σ → ~0.011
+    // σ → 0 collapses to a Kronecker delta.
+    expect(gaussianScore(0, 0)).toBe(1);
+    expect(gaussianScore(0.01, 0)).toBe(0);
+  });
+
+  it("axial-window picks integer mj nearest to abp.offset under gaussian mode", () => {
+    // Fascin: preferred axial offset 0.84 monomers. With σ_min=0.15 the
+    // iteration range is ±0.45, so only mj = mi+1 is in window (mismatch 0.16,
+    // score ~0.566). mj = mi+0 has mismatch 0.84 → outside 3σ → not even
+    // considered; mj = mi+2 has mismatch 1.16 → also outside.
+    const params = smallParams({ abpType: "fascin", helicityMode: "discrete12" });
+    const state = preparedTwoFilamentState(params, 0);
+    buildCrosslinks(state, params, createSeededRng(80));
+    expect(state.crosslinks.length).toBeGreaterThan(0);
+    for (const [ia, ib] of state.crosslinks) {
+      const a = state.beads[ia];
+      const b = state.beads[ib];
+      expect(b.m - a.m).toBe(1);
+    }
+  });
+
+  it("scoreRegistries.total is higher at σ_max than σ_min (broader well admits more weight)", () => {
+    // Same configuration scored at two widths. Broader σ_axial accepts a
+    // larger range of mj and the per-site Gaussian assigns more weight to
+    // off-peak mismatches, so the sum is monotone in σ.
+    const params = smallParams({ abpType: "fascin", helicityMode: "discrete12" });
+    const state = preparedTwoFilamentState(params, 0);
+    const sigmaMin = params.mcAxialSigmaMinMonomers;
+    const sigmaMax = params.mcAxialSigmaMaxMonomers;
+    const atMin = scoreRegistries(state, params, { axialSigmaMonomers: sigmaMin });
+    const atMax = scoreRegistries(state, params, { axialSigmaMonomers: sigmaMax });
+    expect(atMax.total).toBeGreaterThanOrEqual(atMin.total);
+  });
+
+  it("legacy scoring mode reproduces hard-window behavior", () => {
+    // Under scoringMode: 'legacy' with abpType: 'custom' (offset=0, tol=0) the
+    // same-monomer compatibility semantics from Stages 1–2 hold: face score is
+    // cosine/binary, axial gate is a 1/0 hard step.
+    const params = smallParams({
+      sat: 0,
+      abpType: "custom",
+      scoringMode: "legacy",
+    });
+    const state = preparedTwoFilamentState(params);
+    expect(compatibleAt(state, params, 0, 1, 0, 0)).toBe(true);
+    expect(scoreRegistries(state, params).total).toBe(2);
+  });
+
+  it("scoreRegistries.count after MC equals state.crosslinks.length at σ_min", async () => {
+    // The CLAUDE.md-mandated invariant: scoreRegistries and buildCrosslinks
+    // agree on count. Re-checks under the new defaults (gaussian, σ_min=0.15).
+    const params: Params = {
+      ...defaultParams(),
+      rings: 1,
+      monomers: 24,
+      mcIters: 80,
+      mcT0: 4,
+      mcT1: 0.01,
+      mcSkew: 0,
+      sat: 1,
+    };
+    const state = createSimulationState();
+    resetSystem(state, params, createSeededRng(81), false);
+    await runMonteCarlo(state, params, createSeededRng(82), { iters: 80 });
+    const score = scoreRegistries(state, params);
+    expect(score.count).toBe(state.crosslinks.length);
+  });
+});
+
 describe("registry MC", () => {
   it("mutates filament phaseDeg in continuous mode and leaves discrete s alone", async () => {
     const params: Params = {
@@ -317,6 +569,10 @@ describe("registry MC", () => {
       mcT1: 0.05,
       mcSkew: 0,
       mcPhaseSigma0: 30,
+      // Disable the new polarity/slide moves for this test — its intent is
+      // "phaseDeg mutates in continuous mode", independent of the new DOFs.
+      mcPolarityFlipProb: 0,
+      mcAxialSlideProb: 0,
       sat: 1,
     };
     const state = createSimulationState();

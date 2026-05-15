@@ -9,6 +9,7 @@ type DrawObject =
   | { type: "crosslink"; z: number; a: ProjectedPoint; b: ProjectedPoint; highlighted: boolean }
   | { type: "bond"; z: number; a: ProjectedPoint; b: ProjectedPoint; color: string; width: number }
   | { type: "faceArrow"; z: number; a: ProjectedPoint; b: ProjectedPoint; color: string }
+  | { type: "polarityArrow"; z: number; a: ProjectedPoint; b: ProjectedPoint; color: string }
   | { type: "bead"; z: number; p: ProjectedPoint; bead: BeadMeta; idx: number };
 
 interface HighlightTopology {
@@ -154,6 +155,35 @@ export class CanvasRenderer implements Renderer {
       }
     }
 
+    if (this.state.display.showFilaments) {
+      const monomers = this.params.monomers;
+      for (const filament of this.state.filaments) {
+        // Pick the two beads farthest along the +m direction so the arrow head
+        // sits at the filament's "+ end" (where polarity = 1 points).
+        const lastIdx = filament.id * monomers + (monomers - 1);
+        const prevIdx = filament.id * monomers + Math.max(0, monomers - 2);
+        const lastBead = this.state.beads[lastIdx];
+        const prevBead = this.state.beads[prevIdx];
+        if (!lastBead || !prevBead) continue;
+        const headBead = filament.polarity === 1 ? lastBead : this.state.beads[filament.id * monomers];
+        const tailBead = filament.polarity === 1
+          ? prevBead
+          : this.state.beads[filament.id * monomers + Math.min(1, monomers - 1)];
+        if (!headBead || !tailBead) continue;
+        const tail = this.project(tailBead);
+        const head = this.project(headBead);
+        objects.push({
+          type: "polarityArrow",
+          z: 0.5 * (tail.z + head.z),
+          a: tail,
+          b: head,
+          color: filament.polarity === 1
+            ? "rgba(118, 229, 255, 0.85)"
+            : "rgba(255, 153, 153, 0.85)",
+        });
+      }
+    }
+
     if (this.state.display.showFaceArrows) {
       for (const bead of this.state.beads) {
         if (bead.isInternal) continue;
@@ -198,6 +228,11 @@ export class CanvasRenderer implements Renderer {
         this.ctx.strokeStyle = obj.color;
         this.ctx.fillStyle = obj.color;
         this.ctx.lineWidth = 1.15;
+        this.arrow(obj.a, obj.b);
+      } else if (obj.type === "polarityArrow") {
+        this.ctx.strokeStyle = obj.color;
+        this.ctx.fillStyle = obj.color;
+        this.ctx.lineWidth = 1.5;
         this.arrow(obj.a, obj.b);
       } else {
         const selected = obj.bead.f === highlight.filamentId;

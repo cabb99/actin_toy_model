@@ -213,6 +213,10 @@ refs.selects.perturbMode.addEventListener("change", () => {
   applyPerturbationConstraints(state, params);
 });
 
+refs.selects.scoringMode.addEventListener("change", () => {
+  commitLiveParams();
+});
+
 refs.filamentSelect.addEventListener("change", () => {
   state.display.highlightedFilamentId = Number(refs.filamentSelect.value);
   renderer.markColorsDirty();
@@ -512,9 +516,11 @@ function updateHoverTooltip(ev: PointerEvent): void {
   );
   const angleStr = angle === null ? "—" : `${angle.toFixed(1)}°`;
   const monomerSwatch = angle === null ? "transparent" : angleCssColor(angle);
+  const polarityStr = filament.polarity === 1 ? "+" : "−";
+  const displacementNm = (filament.axialOffsetMonomers * params.b).toFixed(1);
   hoverInfo.innerHTML =
     `<div><span class="swatch" style="background:${filamentSwatch}"></span>` +
-    `<strong>filament ${bead.f}</strong> · ${filamentRegistry}</div>` +
+    `<strong>filament ${bead.f}</strong> · ${filamentRegistry} · displacement ${displacementNm} nm · polarity ${polarityStr}</div>` +
     `<div><span class="swatch" style="background:${monomerSwatch}"></span>` +
     `<strong>m ${bead.m}</strong> · θ ${angleStr}</div>`;
   hoverInfo.style.left = `${mx}px`;

@@ -134,11 +134,21 @@ export const APP_HTML = String.raw`
 
       <details class="advanced">
         <summary>Show advanced</summary>
-        <div class="control"><label>MC starting T₀ <span id="mcT0Val"></span></label><input id="mcT0" type="range" min="0.05" max="40" step="0.05" value="8" /></div>
-        <div class="control"><label>MC ending T₁ <span id="mcT1Val"></span></label><input id="mcT1" type="range" min="0.001" max="4" step="0.001" value="0.05" /></div>
-        <div class="control"><label>MC iterations <span id="mcItersVal"></span></label><input id="mcIters" type="range" min="500" max="40000" step="500" value="4000" /></div>
+        <div class="control"><label>MC starting T₀ <span id="mcT0Val"></span></label><input id="mcT0" type="range" min="0.05" max="40" step="0.05" value="4" /></div>
+        <div class="control"><label>MC ending T₁ <span id="mcT1Val"></span></label><input id="mcT1" type="range" min="0.001" max="4" step="0.001" value="0.005" /></div>
+        <div class="control"><label>MC iterations <span id="mcItersVal"></span></label><input id="mcIters" type="range" min="500" max="400000" step="500" value="12000" /></div>
         <div class="control"><label>MC skew penalty <span id="mcSkewVal"></span></label><input id="mcSkew" type="range" min="0" max="1" step="0.01" value="0.15" /></div>
         <div class="control"><label>MC phase σ₀ (deg, continuous) <span id="mcPhaseSigma0Val"></span></label><input id="mcPhaseSigma0" type="range" min="1" max="90" step="0.5" value="30" /></div>
+        <div class="control"><label>Scoring mode
+          <select id="scoringMode">
+            <option value="gaussian">gaussian (annealed)</option>
+            <option value="legacy">legacy (cosine + hard axial)</option>
+          </select>
+        </label></div>
+        <div class="control"><label>Angle σ max (deg, at T₀) <span id="mcAngleSigmaMaxDegVal"></span></label><input id="mcAngleSigmaMaxDeg" type="range" min="1" max="90" step="0.5" value="30" /></div>
+        <div class="control"><label>Angle σ min (deg, at T₁) <span id="mcAngleSigmaMinDegVal"></span></label><input id="mcAngleSigmaMinDeg" type="range" min="0.1" max="30" step="0.1" value="3" /></div>
+        <div class="control"><label>Axial σ max (monomers, at T₀) <span id="mcAxialSigmaMaxMonomersVal"></span></label><input id="mcAxialSigmaMaxMonomers" type="range" min="0.05" max="2" step="0.01" value="0.5" /></div>
+        <div class="control"><label>Axial σ min (monomers, at T₁) <span id="mcAxialSigmaMinMonomersVal"></span></label><input id="mcAxialSigmaMinMonomers" type="range" min="0.01" max="0.5" step="0.005" value="0.15" /></div>
       </details>
     </section>
 

@@ -32,6 +32,27 @@ export function wrapDeg360(deg: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
+export function effectiveMonomerIndex(m: number, polarity: 1 | -1, monomers: number): number {
+  return polarity === 1 ? m : monomers - 1 - m;
+}
+
+// Wraps a continuous axial offset (in monomer units) into [-0.5, 0.5).
+// The integer `carry` is how many whole monomers the offset crossed — callers
+// shift `s` (or phaseDeg) by this amount so the wrap is energy-neutral.
+export function wrapAxialOffsetMonomers(offset: number): { wrapped: number; carry: number } {
+  // `|| 0` collapses Math.round's -0 result (for offsets in (-0.5, 0]) to +0
+  // so callers see a clean integer carry.
+  let carry = Math.round(offset) || 0;
+  let wrapped = offset - carry;
+  // Math.round breaks ties to even, but the half-open [-0.5, +0.5) convention
+  // routes +0.5 to (-0.5, carry+1). Handle the boundary explicitly.
+  if (wrapped >= 0.5) {
+    wrapped -= 1;
+    carry += 1;
+  }
+  return { wrapped, carry };
+}
+
 export function angularDistanceDeg(a: number, b: number): number {
   const d = ((a - b + 180) % 360 + 360) % 360 - 180;
   return Math.abs(d);
@@ -119,4 +140,18 @@ export function softAngularScore(
   if (k === 0) return 1;
   const x = mismatchDeg / t;
   return Math.pow(Math.cos((x * Math.PI) / 2), k);
+}
+
+/**
+ * Gaussian falloff: exp(-mismatch² / (2 σ²)). Peaks at 1 when mismatch = 0,
+ * decays smoothly toward 0 with no hard cutoff. Used by the MC's Gaussian
+ * scoring mode for both helical-angle and axial-offset mismatch. At σ → 0
+ * collapses to a Kronecker delta (1 iff mismatch is exactly 0). The caller is
+ * responsible for clamping σ above some practical minimum to avoid a vanishing
+ * gradient at runtime.
+ */
+export function gaussianScore(mismatch: number, sigma: number): number {
+  if (!(sigma > 0)) return mismatch === 0 ? 1 : 0;
+  const x = mismatch / sigma;
+  return Math.exp(-0.5 * x * x);
 }

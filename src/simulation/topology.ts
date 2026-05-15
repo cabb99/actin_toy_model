@@ -5,7 +5,7 @@ import type { BeadMeta, Params, Rng, SimulationState, Vec3 } from "../model/type
 import { scoreRegistries, selectCrosslinkSites } from "./compatibility";
 import { randomRegistry } from "./random";
 
-export { compatibilityScore, compatibleAt, scoreRegistries } from "./compatibility";
+export { compatibilityScore, compatibilityScoreAt, compatibleAt, scoreRegistries } from "./compatibility";
 
 export function beadIndex(params: Pick<Params, "monomers">, filamentId: number, m: number): number {
   return filamentId * params.monomers + m;
@@ -20,7 +20,7 @@ export function buildFilaments(state: SimulationState, params: Params, rng: Rng)
   if (params.latticeGeometry === "square") {
     for (let q = -R; q <= R; q++) {
       for (let r = -R; r <= R; r++) {
-        state.filaments.push({ id, q, r, x: q * params.a, y: r * params.a, s: 0, phaseDeg: 0 });
+        state.filaments.push({ id, q, r, x: q * params.a, y: r * params.a, s: 0, phaseDeg: 0, polarity: 1, axialOffsetMonomers: 0 });
         byKey.set(`${q},${r}`, id);
         id++;
       }
@@ -31,7 +31,7 @@ export function buildFilaments(state: SimulationState, params: Params, rng: Rng)
         const s = -q - r;
         if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) <= R) {
           const xy = axialToXY(q, r, params.a);
-          state.filaments.push({ id, q, r, x: xy.x, y: xy.y, s: 0, phaseDeg: 0 });
+          state.filaments.push({ id, q, r, x: xy.x, y: xy.y, s: 0, phaseDeg: 0, polarity: 1, axialOffsetMonomers: 0 });
           byKey.set(`${q},${r}`, id);
           id++;
         }
@@ -71,6 +71,32 @@ export function assignRegistries(state: SimulationState, params: Params, rng: Rn
       default:
         f.s = defaultLatticeRegistry(f.q, f.r, params.latticeGeometry);
         f.phaseDeg = phaseStep * f.s;
+    }
+  }
+}
+
+/**
+ * Re-lay out filament backbone bead z-coordinates from each filament's current
+ * axialOffsetMonomers. Updates bead.z0 (rest), bead.z (current snapshot), and
+ * state.pos. Used after MC mutates axial offsets so the physical geometry,
+ * crosslink rest lengths, and rendered positions stay in sync. Internal-linker
+ * bead z is left alone (those are rebuilt by `buildCrosslinks`).
+ */
+export function applyAxialOffsetsToBeads(state: SimulationState, params: Params): void {
+  const zCenter = 0.5 * (params.monomers - 1) * params.b;
+  for (const f of state.filaments) {
+    const zShift = f.axialOffsetMonomers * params.b;
+    for (let m = 0; m < params.monomers; m++) {
+      const idx = beadIndex(params, f.id, m);
+      const bead = state.beads[idx];
+      if (!bead) continue;
+      const baseZ = m * params.b - zCenter + zShift;
+      const oldZ0 = bead.z0;
+      bead.z0 = baseZ;
+      bead.z += baseZ - oldZ0;
+      if (state.pos.length >= (idx + 1) * 3) {
+        state.pos[idx * 3 + 2] += baseZ - oldZ0;
+      }
     }
   }
 }
@@ -132,7 +158,6 @@ export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng
   for (const [fi, fj] of state.neighborPairs) counts.set(`${fi}-${fj}`, 0);
 
   const abp = currentAbpEffective(params);
-  const restLen = abp.length;
 
   const { selected, census } = selectCrosslinkSites(state, params, { applySaturation: true, rng });
   state.helicity.compatibleSites = census.compatibleSites;
@@ -140,13 +165,18 @@ export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng
 
   for (const c of selected) {
     const ia = beadIndex(params, c.fi, c.m);
-    const ib = beadIndex(params, c.fj, c.m);
+    const ib = beadIndex(params, c.fj, c.mj);
+    const a = state.beads[ia];
+    const b = state.beads[ib];
+    // Rest length is the actual diagonal between the two bound beads (using
+    // the rest positions x0/y0/z0, which already include each filament's
+    // axialOffsetMonomers shift). For non-staggered ABPs this collapses to the
+    // perpendicular lattice spacing.
+    const restLen = Math.hypot(b.x0 - a.x0, b.y0 - a.y0, b.z0 - a.z0);
 
     if (abp.model === "single") {
       state.crosslinks.push([ia, ib, restLen]);
     } else if (abp.model === "linker2") {
-      const a = state.beads[ia];
-      const b = state.beads[ib];
       const iInt = addInternalBead(
         state,
         0.5 * (a.x + b.x),
@@ -158,8 +188,6 @@ export function buildCrosslinks(state: SimulationState, params: Params, rng: Rng
       state.bonds.push([iInt, ib, segLen, abp.kInternal]);
       state.bends.push([ia, iInt, ib, abp.kBendInternal]);
     } else {
-      const a = state.beads[ia];
-      const b = state.beads[ib];
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const dz = b.z - a.z;
@@ -195,11 +223,12 @@ export function resetSystem(
   const disorder = randomize ? params.a * 0.06 : 0;
 
   for (const f of state.filaments) {
+    const zShift = f.axialOffsetMonomers * params.b;
     for (let m = 0; m < params.monomers; m++) {
       const taper = Math.sin(Math.PI * m / Math.max(1, params.monomers - 1));
       const baseX = f.x;
       const baseY = f.y;
-      const baseZ = m * params.b - zCenter;
+      const baseZ = m * params.b - zCenter + zShift;
       const bead: BeadMeta = {
         x: baseX + disorder * taper * rng.normal(),
         y: baseY + disorder * taper * rng.normal(),

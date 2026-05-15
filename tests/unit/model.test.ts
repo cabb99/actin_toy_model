@@ -74,17 +74,17 @@ describe("hex and phase model", () => {
   });
 
   it("maps discrete registries to evenly spaced hues", () => {
-    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 0 }, "discrete12")).toBe(0);
-    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 3, phaseDeg: 0 }, "discrete12")).toBe(90);
-    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: PHASE_LEN - 1, phaseDeg: 0 }, "discrete12")).toBe(
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 0 }, "discrete12")).toBe(0);
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 3, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 0 }, "discrete12")).toBe(90);
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: PHASE_LEN - 1, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 0 }, "discrete12")).toBe(
       330,
     );
   });
 
   it("wraps continuous phase angles onto the hue wheel", () => {
-    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 361 }, "continuous")).toBe(1);
-    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: -30 }, "continuous")).toBe(330);
-    expect(registryCssColor({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 359.6 }, "continuous")).toBe(
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 361 }, "continuous")).toBe(1);
+    expect(registryHue({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: -30 }, "continuous")).toBe(330);
+    expect(registryCssColor({ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 359.6 }, "continuous")).toBe(
       "hsl(360, 70%, 65%)",
     );
   });
@@ -92,7 +92,7 @@ describe("hex and phase model", () => {
   it("keeps readout bead colors aligned with the shared registry color helper", () => {
     const state = createSimulationState();
     state.display.showRegistry = true;
-    state.filaments = [{ id: 0, q: 0, r: 0, x: 0, y: 0, s: 4, phaseDeg: 123 }];
+    state.filaments = [{ id: 0, q: 0, r: 0, x: 0, y: 0, s: 4, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 123 }];
 
     expect(beadCssColor(state, discreteParams, { f: 0, m: 0 })).toBe(registryCssColor(state.filaments[0], "discrete12"));
     expect(beadCssColor(state, continuousParams, { f: 0, m: 0 })).toBe(registryCssColor(state.filaments[0], "continuous"));
@@ -103,12 +103,12 @@ describe("hex and phase model", () => {
     expect(nearestHexDirectionK(30.1)).toBe(1);
     expect(nearestHexDirectionK(359)).toBe(0);
 
-    const filament = { id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 61 };
+    const filament = { id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 61 };
     expect(displayedFaceK(0, filament, continuousParams)).toBe(1);
   });
 
   it("exposes physical face angles for radial face markers", () => {
-    const filament = { id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 61 };
+    const filament = { id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 61 };
 
     expect(displayedFaceAngleDeg(4, filament, discreteParams)).toBe(60);
     expect(displayedFaceAngleDeg(2, filament, discreteParams)).toBeNull();
@@ -118,7 +118,7 @@ describe("hex and phase model", () => {
   it("keeps face colors on the same angular palette as the shared face helper", () => {
     const state = createSimulationState();
     state.display.showFaces = true;
-    state.filaments = [{ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, phaseDeg: 61 }];
+    state.filaments = [{ id: 0, q: 0, r: 0, x: 0, y: 0, s: 0, polarity: 1 as const, axialOffsetMonomers: 0, phaseDeg: 61 }];
 
     const faceIndex = displayedFaceK(0, state.filaments[0], continuousParams);
     expect(faceIndex).toBe(1);

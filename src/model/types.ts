@@ -4,6 +4,18 @@ export type PerturbMode = "none" | "bend3";
 export type AbpModel = "single" | "linker2" | "linker4";
 export type HelicityMode = "discrete12" | "continuous";
 export type LatticeGeometry = "hex" | "square";
+export type ScoringMode = "gaussian" | "legacy";
+
+/**
+ * Per-call overrides for the soft-scoring width. Used by the MC loop to thread
+ * a T-annealed sigma into the scoring helpers without mutating `params`. When
+ * a field is undefined the helpers fall back to the corresponding "min" value
+ * on `params` (i.e. the tight, final-state width).
+ */
+export interface ScoringOverrides {
+  angleSigmaDeg?: number;
+  axialSigmaMonomers?: number;
+}
 
 export interface Params {
   latticeGeometry: LatticeGeometry;
@@ -38,6 +50,14 @@ export interface Params {
   helicityAngleThresholdDeg: number;
   compatibilitySharpness: number;
   mcPhaseSigma0: number;
+  mcAxialSigma0: number;
+  mcPolarityFlipProb: number;
+  mcAxialSlideProb: number;
+  scoringMode: ScoringMode;
+  mcAngleSigmaMaxDeg: number;
+  mcAngleSigmaMinDeg: number;
+  mcAxialSigmaMaxMonomers: number;
+  mcAxialSigmaMinMonomers: number;
   registryMode: RegistryMode;
   abpType: AbpType;
   perturbMode: PerturbMode;
@@ -53,10 +73,14 @@ export interface AbpPreset {
   kInternal?: number;
   kBendInternal?: number;
   label: string;
+  requireParallel: boolean;
+  abpAxialOffsetMonomers: number;
+  abpAxialOffsetTolMonomers: number;
 }
 
 export interface EffectiveAbp {
   length: number;
+  latticeA: number;
   kCl: number;
   kPerp: number;
   usePerp: boolean;
@@ -64,6 +88,9 @@ export interface EffectiveAbp {
   kInternal: number;
   kBendInternal: number;
   label: string;
+  requireParallel: boolean;
+  abpAxialOffsetMonomers: number;
+  abpAxialOffsetTolMonomers: number;
 }
 
 export interface Filament {
@@ -74,6 +101,8 @@ export interface Filament {
   y: number;
   s: number;
   phaseDeg: number;
+  polarity: 1 | -1;
+  axialOffsetMonomers: number;
 }
 
 export interface BeadMeta {

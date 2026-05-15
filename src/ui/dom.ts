@@ -30,6 +30,10 @@ export const controlIds = [
   "mcIters",
   "mcSkew",
   "mcPhaseSigma0",
+  "mcAngleSigmaMaxDeg",
+  "mcAngleSigmaMinDeg",
+  "mcAxialSigmaMaxMonomers",
+  "mcAxialSigmaMinMonomers",
 ] as const;
 
 export const selectIds = [
@@ -39,6 +43,7 @@ export const selectIds = [
   "registryMode",
   "abpType",
   "perturbMode",
+  "scoringMode",
 ] as const;
 export const structuralKeys = new Set<string>(["rings", "monomers", "b", "a"]);
 
@@ -112,6 +117,7 @@ export function readParams(params: Params, refs: Pick<DomRefs, "controls" | "sel
   params.registryMode = refs.selects.registryMode.value as Params["registryMode"];
   params.abpType = refs.selects.abpType.value as Params["abpType"];
   params.perturbMode = refs.selects.perturbMode.value as Params["perturbMode"];
+  params.scoringMode = refs.selects.scoringMode.value as Params["scoringMode"];
 }
 
 export function updateLabels(params: Params, controls: Controls, values: ValueLabels): void {
@@ -155,6 +161,10 @@ export function updateLabels(params: Params, controls: Controls, values: ValueLa
   values.mcIters.textContent = Math.round(params.mcIters).toString();
   values.mcSkew.textContent = params.mcSkew.toFixed(2);
   values.mcPhaseSigma0.textContent = params.mcPhaseSigma0.toFixed(1);
+  values.mcAngleSigmaMaxDeg.textContent = params.mcAngleSigmaMaxDeg.toFixed(1);
+  values.mcAngleSigmaMinDeg.textContent = params.mcAngleSigmaMinDeg.toFixed(1);
+  values.mcAxialSigmaMaxMonomers.textContent = params.mcAxialSigmaMaxMonomers.toFixed(2);
+  values.mcAxialSigmaMinMonomers.textContent = params.mcAxialSigmaMinMonomers.toFixed(3);
 }
 
 export function applyAbpPresetToControls(type: AbpType, params: Params, refs: DomRefs, adjustLattice = true): void {

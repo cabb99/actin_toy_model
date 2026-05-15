@@ -6,6 +6,7 @@ export function currentAbpEffective(params: Params): EffectiveAbp {
     const preset = ABP_PRESETS[params.abpType];
     return {
       length: params.clDist,
+      latticeA: preset.latticeA,
       kCl: params.kcl,
       kPerp: params.kperp,
       usePerp: preset.usePerp,
@@ -13,10 +14,14 @@ export function currentAbpEffective(params: Params): EffectiveAbp {
       kInternal: preset.kInternal ?? 200,
       kBendInternal: preset.kBendInternal ?? 25,
       label: preset.label,
+      requireParallel: preset.requireParallel,
+      abpAxialOffsetMonomers: preset.abpAxialOffsetMonomers,
+      abpAxialOffsetTolMonomers: preset.abpAxialOffsetTolMonomers,
     };
   }
   return {
     length: params.clDist,
+    latticeA: params.a,
     kCl: params.kcl,
     kPerp: params.kperp,
     usePerp: params.kperp > 0,
@@ -24,6 +29,9 @@ export function currentAbpEffective(params: Params): EffectiveAbp {
     kInternal: 200,
     kBendInternal: 25,
     label: "custom",
+    requireParallel: false,
+    abpAxialOffsetMonomers: 0,
+    abpAxialOffsetTolMonomers: 0,
   };
 }
 
